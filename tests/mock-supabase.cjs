@@ -12,14 +12,14 @@ const assets = [
 assets.push(...Array.from({ length: 12 }, (_, index) => ({
   ...assets[0], id: id(100 + index), symbol: `ZZT${String(index).padStart(2, '0')}`, name: `Empresa de teste ${index}`, quotes: [],
 })));
-// Bybit fixtures are a separate CRYPTO market and never inflate the B3 count.
+// Kraken fixtures are a separate CRYPTO market and never inflate the B3 count.
 const metric = (metric_name, metric_value) => ({ metric_name, metric_value, reference_period: 14 });
 const metrics = direction => [metric('CLOSE', '68000.25'), metric('RETURN', '0.0125'), metric('MOMENTUM_PCT', '1.25'), metric('EMA20', '67500.00'), metric('EMA50', '67000.00'), metric('RSI', '58.25'), metric('VOLATILITY', '0.0025'), metric('ATR', '120.25'), metric('MAX_DRAWDOWN', '-0.015'), metric('AVERAGE_VOLUME', '100.00'), metric('RELATIVE_VOLUME', '1.20'), metric('TREND_DIRECTION', String(direction))];
 const analysis = (value, interval, minutes, direction = 1) => ({ id: id(value), interval, reference_at: at(0, minutes), created_at: at(0, 1), algorithm_version: 'analysis-v2', metrics: metrics(direction) });
 const cryptoAssets = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT'].map((symbol, index) => ({
   id: id(200 + index), symbol, name: ['Bitcoin', 'Ethereum', 'Solana'][index], asset_type: 'CRYPTO',
-  market: { code: 'CRYPTO', name: 'Criptoativos', country_code: null }, currency: { code: 'USDT' }, exchange: { code: 'BYBIT' },
-  quotes: [{ price: '68001.50', provider: 'bybit', currency_code: 'USDT', quality: 'VALID', observed_at: at(0, index === 1 ? 5 : index === 2 ? -1 : 0.5) }],
+  market: { code: 'CRYPTO', name: 'Criptoativos', country_code: null }, currency: { code: 'USDT' }, exchange: { code: 'KRAKEN' },
+  quotes: [{ price: '68001.50', provider: 'kraken', currency_code: 'USDT', quality: 'VALID', observed_at: at(0, index === 1 ? 5 : index === 2 ? -1 : 0.5) }],
   analyses15m: index === 0 ? [analysis(210, '15m', 16)] : index === 1 ? [analysis(211, '15m', 16)] : [{ ...analysis(212, '15m', 16), metrics: metrics(1).filter(row => row.metric_name !== 'EMA50') }],
   analyses1h: index === 0 ? [analysis(220, '1h', 61, -1)] : index === 1 ? [analysis(221, '1h', -1)] : [{ ...analysis(222, '1h', 61), created_at: at(0, -1) }],
 }));
@@ -44,7 +44,7 @@ globalThis.fetch = async function(input, init) {
   const headers = new Headers(init?.headers);
   if (headers.get('apikey') !== 'sb_secret_test_only_never_real') return Response.json({ message: 'Unauthorized' }, { status: 401 });
   if (table === 'assets' && url.searchParams.get('asset_type') === 'eq.CRYPTO') {
-    const required = { 'exchange.code': 'eq.BYBIT', 'quotes.provider': 'eq.bybit', 'quotes.limit': '1', 'analyses15m.interval': 'eq.15m', 'analyses1h.interval': 'eq.1h', 'analyses15m.algorithm_version': 'eq.analysis-v2', 'analyses1h.algorithm_version': 'eq.analysis-v2', 'analyses15m.order': 'reference_at.desc', 'analyses1h.order': 'reference_at.desc', 'analyses15m.limit': '1', 'analyses1h.limit': '1' };
+    const required = { 'exchange.code': 'eq.KRAKEN', 'quotes.provider': 'eq.kraken', 'quotes.limit': '1', 'analyses15m.interval': 'eq.15m', 'analyses1h.interval': 'eq.1h', 'analyses15m.algorithm_version': 'eq.analysis-v2', 'analyses1h.algorithm_version': 'eq.analysis-v2', 'analyses15m.order': 'reference_at.desc', 'analyses1h.order': 'reference_at.desc', 'analyses15m.limit': '1', 'analyses1h.limit': '1' };
     if (Object.entries(required).some(([key, value]) => url.searchParams.get(key) !== value)) return Response.json({ message: 'Crypto query must isolate provider and independent latest v2 intervals' }, { status: 400 });
     return Response.json(cryptoAssets);
   }

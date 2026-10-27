@@ -68,16 +68,16 @@ export function Crypto({ data, hidden }: { data: DashboardData; hidden: boolean 
   }, [data.fetchedAt]);
   const now = receivedAt + (clock.fetchedAt === data.fetchedAt ? clock.elapsed : 0);
   return <>
-    <div className="page-intro"><div><span className="eyebrow">BYBIT · SPOT · USDT</span><h1>Cripto</h1><p>Condições de curto prazo, com indicadores persistidos por intervalo.</p></div></div>
+    <div className="page-intro"><div><span className="eyebrow">KRAKEN · SPOT · USDT</span><h1>Cripto</h1><p>Condições de curto prazo, com indicadores persistidos por intervalo.</p></div></div>
     <div className="mint-note crypto-note"><span className="empty-icon"><ShieldCheck size={22}/></span><div><h3>Contexto para acompanhar o mercado</h3><p>Tendências descrevem os candles analisados. Não são recomendações de compra nem promessa de retorno. Custos e spread indisponíveis: não há registro persistido nesta versão.</p></div></div>
     <SectionError message={data.crypto.error}/>
     {data.crypto.data.length === 0 ? <div className="panel"><Empty title="Aguardando análise válida" description="Os pares monitorados aparecerão após o cadastro e a coleta do backend." icon={Activity}/></div> : <div className="crypto-grid">{data.crypto.data.map(asset => {
       const quote = asset.quotes[0];
       const time = quote ? Date.parse(quote.observed_at) : NaN;
-      const valid = quote?.provider === 'bybit' && quote.currency_code === 'USDT' && quote.quality === 'VALID' && new Decimal(quote.price).greaterThan(0) && time <= receivedAt && now - time <= 120_000;
+      const valid = quote?.provider === 'kraken' && quote.currency_code === 'USDT' && quote.quality === 'VALID' && new Decimal(quote.price).greaterThan(0) && time <= receivedAt && now - time <= 120_000;
       return <article className="panel crypto-card" key={asset.id} aria-label={asset.symbol}>
-        <header className="crypto-card-heading"><div><span className="eyebrow">BYBIT · SPOT</span><h2>{asset.symbol}</h2><p>{asset.name} · USDT</p></div><Activity size={21}/></header>
-        <div className="crypto-price"><strong>{valid ? hidden ? '••••••' : `${numbers(quote.price)} USDT` : 'Cotação indisponível'}</strong>{valid && <span>Cotação: <time dateTime={quote.observed_at}>{dateTime(quote.observed_at)} (Brasília)</time></span>}<small>Fonte: Bybit · validade máxima da cotação: 120 segundos</small></div>
+        <header className="crypto-card-heading"><div><span className="eyebrow">KRAKEN · SPOT</span><h2>{asset.symbol}</h2><p>{asset.name} · USDT</p></div><Activity size={21}/></header>
+        <div className="crypto-price"><strong>{valid ? hidden ? '••••••' : `${numbers(quote.price)} USDT` : 'Cotação indisponível'}</strong>{valid && <span>Cotação: <time dateTime={quote.observed_at}>{dateTime(quote.observed_at)} (Brasília)</time></span>}<small>Fonte: Kraken · validade máxima da cotação: 120 segundos</small></div>
         {(Object.keys(intervals) as (keyof typeof intervals)[]).map(interval => <Analysis key={interval} analysis={valid ? latestAnalysis(asset, interval, now, receivedAt) : null} interval={interval} hidden={hidden}/>)}
       </article>;
     })}</div>}

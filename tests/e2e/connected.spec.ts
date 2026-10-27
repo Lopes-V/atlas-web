@@ -133,13 +133,15 @@ test('keeps database decimal cents when rendering portfolio values in the browse
 });
 
 
-test('crypto route authenticates and presents persisted Bybit intervals with privacy', async ({ page }) => {
+test('crypto route authenticates and presents persisted Kraken intervals with privacy', async ({ page }) => {
   await page.goto('/cripto');
   await expect(page).toHaveURL(/\/login$/);
   await signIn(page);
   await page.getByRole('link', { name: 'Cripto', exact: true }).click();
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Cripto');
   const btc = page.getByRole('article', { name: 'BTCUSDT' });
+  await expect(btc).toContainText('Fonte: Kraken');
+  await expect(btc).not.toContainText('Bybit');
   await expect(btc).toContainText('68.001,50 USDT');
   await expect(btc.getByRole('region', { name: '15m' })).toContainText('ALTA');
   await expect(btc.getByRole('region', { name: '1h' })).toContainText('BAIXA');
