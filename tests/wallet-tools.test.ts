@@ -1,7 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import Decimal from "decimal.js";
-import type { Candle, CryptoAnalysis, Quote } from "../src/lib/contracts";
+import type { Candle, CryptoAnalysis } from "../src/lib/contracts";
+import type { QuoteLike } from "../src/lib/finance";
 import {
   quantityForPercent,
   researchAnalysis,
@@ -214,7 +215,8 @@ const asset = (
   analyses,
   candles,
 });
-const quote: Quote = {
+// RPC quote quality is transported as a string and validated by the helper.
+const quote: QuoteLike = {
   price: "120",
   observed_at: iso(received),
   currency_code: "USDT",

@@ -1,5 +1,6 @@
 import Decimal from "decimal.js";
-import type { Candle, CryptoAnalysis, Quote } from "./contracts";
+import type { Candle, CryptoAnalysis } from "./contracts";
+import type { QuoteLike } from "./finance";
 import { decimal, signedDecimal, usableQuote } from "./virtual-contracts";
 
 // A local constructor leaves the accounting core and other Decimal callers untouched.
@@ -238,7 +239,7 @@ const unavailable = (reason: string): AnalysisResult => ({
 export function researchAnalysis(
   asset: ResearchAsset,
   interval: "15m" | "1h",
-  quote: Quote | null | undefined,
+  quote: QuoteLike | null | undefined,
   now: number,
   receivedAt: number,
 ): AnalysisResult {
