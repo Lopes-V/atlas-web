@@ -10,7 +10,7 @@ const rawAssetSchema = z.object({
   market:z.object({code:z.literal('CRYPTO'),is_active:z.literal(true)}),
   currency:z.object({code:z.literal('USDT'),is_active:z.literal(true)}),
   exchange:z.object({code:z.literal('KRAKEN'),is_active:z.literal(true)}),
-  analyses15m:z.array(cryptoAnalysisSchema).max(1), analyses1h:z.array(cryptoAnalysisSchema).max(1),
+  analyses15m:z.array(cryptoAnalysisSchema).max(2), analyses1h:z.array(cryptoAnalysisSchema).max(2),
   candles:z.array(candleSchema).max(96),
 });
 const unavailable='A análise de mercado está indisponível. Seus registros e operações continuam disponíveis.';
@@ -40,9 +40,9 @@ export async function getWalletResearch(token:string, assetIds:string[]):Promise
       'currency.code':'eq.USDT','currency.is_active':'eq.true',
       'exchange.code':'eq.KRAKEN','exchange.is_active':'eq.true',
       'analyses15m.algorithm_version':'eq.analysis-v2','analyses15m.interval':'eq.15m',
-      'analyses15m.order':'reference_at.desc','analyses15m.limit':'1',
+      'analyses15m.order':'reference_at.desc','analyses15m.limit':'2',
       'analyses1h.algorithm_version':'eq.analysis-v2','analyses1h.interval':'eq.1h',
-      'analyses1h.order':'reference_at.desc','analyses1h.limit':'1',
+      'analyses1h.order':'reference_at.desc','analyses1h.limit':'2',
       'candles.provider':'eq.kraken','candles.interval':'eq.15m',
       'candles.order':'observed_at.desc','candles.limit':'96',
     }).toString();
