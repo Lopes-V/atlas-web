@@ -8,7 +8,7 @@ test('opens setup without fabricated financial data and navigates all sections',
   await expect(page.getByText('Conexão pendente', { exact: true })).toBeVisible();
   await expect(page.getByRole('link', { name: 'Configurar conexão', exact: true }).first()).toBeVisible();
   await expect(page.locator('.stat-value').first()).toHaveText('—');
-  for (const [route, title] of [['mercados', 'Mercados'], ['carteira', 'Minha carteira'], ['oportunidades', 'Oportunidades'], ['alertas', 'Alertas'], ['renda-fixa', 'Renda fixa'], ['sistema', 'Estado do sistema'], ['configuracoes', 'Configurações']]) {
+  for (const [route, title] of [['cripto', 'Cripto'], ['mercados', 'Mercados'], ['carteira', 'Minha carteira'], ['oportunidades', 'Oportunidades'], ['alertas', 'Alertas'], ['renda-fixa', 'Renda fixa'], ['sistema', 'Estado do sistema'], ['configuracoes', 'Configurações']]) {
     await page.goto(`/${route}`);
     await expect(page.getByRole('heading', { level: 1 })).toHaveText(title);
   }
@@ -17,7 +17,7 @@ test('opens setup without fabricated financial data and navigates all sections',
 
 test('mobile navigation and page layout stay inside the viewport', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
-  for (const route of ['', 'mercados', 'carteira', 'oportunidades', 'alertas', 'renda-fixa', 'sistema', 'configuracoes', 'login']) {
+  for (const route of ['', 'cripto', 'mercados', 'carteira', 'oportunidades', 'alertas', 'renda-fixa', 'sistema', 'configuracoes', 'login']) {
     await page.goto(`/${route}`);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   }

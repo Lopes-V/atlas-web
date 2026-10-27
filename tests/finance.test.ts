@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { quoteState, priceChange, portfolioReturn, latestBy, toCsv } from '../src/lib/finance';
+import { quoteState, priceChange, portfolioReturn, latestBy, toCsv, money } from '../src/lib/finance';
 
 const now = Date.parse('2026-10-26T17:00:00Z');
 test('rejects stale, future and invalid quotes rather than presenting them as current', () => {
@@ -33,4 +33,17 @@ test('CSV escapes separators and neutralizes spreadsheet formulas', () => {
   assert.ok(csv.startsWith('\uFEFF'));
   assert.ok(csv.includes('"\'=HYPERLINK(""bad"")"'));
   assert.ok(csv.includes('"A;B"'));
+});
+
+test('formats database-scale monetary values without losing cents', () => {
+  assert.equal(money('12345678901234567890.12'), 'R$\u00a012.345.678.901.234.567.890,12');
+  assert.equal(money('-12345678901234567890.12', 'USD'), '-US$\u00a012.345.678.901.234.567.890,12');
+});
+
+test('formats small and absent values with the currency locale and explicit rounding', () => {
+  assert.equal(money('0.005'), 'R$\u00a00,01');
+  assert.equal(money('-0.01'), '-R$\u00a00,01');
+  assert.equal(money('36.84'), 'R$\u00a036,84');
+  assert.equal(money(null), '—');
+  assert.equal(money(undefined), '—');
 });

@@ -36,7 +36,9 @@ export function toCsv(headers: string[], rows: (string | number | null)[][]): st
 export function money(value: string | null | undefined, currency = 'BRL'): string {
   if (value == null) return '—';
   try {
-    return new Intl.NumberFormat('pt-BR', { style: 'currency', currency, maximumFractionDigits: 2 }).format(new Decimal(value).toNumber());
+    // Intl accepts decimal text directly; converting to Number loses cents at database precision.
+    const exact = new Decimal(value).toFixed() as Intl.StringNumericLiteral;
+    return new Intl.NumberFormat('pt-BR', { style: 'currency', currency, maximumFractionDigits: 2 }).format(exact);
   } catch {
     return `${new Decimal(value).toFixed(2)} ${currency}`;
   }
