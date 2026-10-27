@@ -26,6 +26,17 @@ export const fixedIncomeSchema = z.object({ id, asset_id: id, provider_symbol: z
 export const fixedSnapshotSchema = z.object({ asset_id: id, provider_symbol: z.string(), reference_date: z.iso.date(), buy_rate: decimal.nullable(), buy_price: decimal.nullable(), received_at: timestamp, quality });
 export const candleSchema = z.object({ observed_at: timestamp, close: decimal, quality, provider: z.string() });
 
+export const cryptoAnalysisSchema = z.object({
+  id, interval: z.enum(['15m', '1h']), reference_at: timestamp, algorithm_version: z.string(), created_at: timestamp,
+  metrics: z.array(z.object({ metric_name: z.string(), metric_value: decimal, reference_period: z.number().int().nullable() })),
+});
+export const cryptoAssetSchema = assetSchema.extend({
+  exchange: z.object({ code: z.string() }),
+  analyses15m: z.array(cryptoAnalysisSchema), analyses1h: z.array(cryptoAnalysisSchema),
+}).transform(({ analyses15m, analyses1h, ...asset }) => ({ ...asset, analyses: [...analyses15m, ...analyses1h] }));
+export type CryptoAnalysis = z.infer<typeof cryptoAnalysisSchema>;
+export type CryptoAsset = z.infer<typeof cryptoAssetSchema>;
+
 export type Asset = z.infer<typeof assetSchema>;
 export type Quote = z.infer<typeof quoteSchema>;
 export type Portfolio = z.infer<typeof portfolioSchema>;
@@ -38,6 +49,6 @@ export type Candle = z.infer<typeof candleSchema>;
 export type Section<T> = { data: T[]; error: string | null; limit: number };
 export type DashboardData = {
   mode: 'setup' | 'connected'; fetchedAt: string; maxAgeSeconds: number;
-  assets: Section<Asset>; portfolios: Section<Portfolio>; opportunities: Section<Opportunity>;
+  assets: Section<Asset>; crypto: Section<CryptoAsset>; portfolios: Section<Portfolio>; opportunities: Section<Opportunity>;
   alerts: Section<Alert>; jobs: Section<Job>; fixedIncome: Section<FixedIncome>; fixedSnapshots: Section<FixedSnapshot>;
 };

@@ -2,6 +2,10 @@ import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypt
 
 export const SESSION_COOKIE = 'atlas-session';
 export const SESSION_DURATION = 8 * 60 * 60 * 1000;
+export function accessConfigured(password: string | undefined, secret: string | undefined): boolean {
+  return (password?.length ?? 0) >= 4 && (secret?.length ?? 0) >= 32;
+}
+
 const sign = (value: string, secret: string) => createHmac('sha256', secret).update(`atlas-session:v1:${value}`).digest('base64url');
 export function createSession(secret: string, now = Date.now()): string {
   const payload = `${now + SESSION_DURATION}.${randomBytes(16).toString('hex')}`;

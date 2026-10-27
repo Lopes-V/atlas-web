@@ -1,0 +1,9 @@
+.git/
+.vercel/
+.next/
+node_modules/
+.env*
+artifacts/
+playwright-report/
+test-results/
+*.tsbuildinfo

@@ -4,7 +4,7 @@ import { authConfigured, isAuthenticated } from '@/lib/auth';
 import { getDashboard, getCandles, databaseConfigured } from '@/lib/data';
 
 export const dynamic = 'force-dynamic';
-const routes = ['', 'mercados', 'carteira', 'oportunidades', 'alertas', 'renda-fixa', 'sistema', 'configuracoes'];
+const routes = ['', 'cripto', 'mercados', 'carteira', 'oportunidades', 'alertas', 'renda-fixa', 'sistema', 'configuracoes'];
 export default async function WorkspacePage({ params, searchParams }: { params: Promise<{ section?: string[] }>; searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const [{ section = [] }, search] = await Promise.all([params, searchParams]);
   const route = section.join('/');
