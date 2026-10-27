@@ -2,12 +2,14 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { VirtualWallet } from "./virtual-wallet";
+import type { WalletResearch } from "@/lib/wallet-tools";
 import type { Market, Wallet, WalletState } from "@/lib/virtual-contracts";
 
 export type WalletScreenSnapshot = {
   wallets: Wallet[];
   state: WalletState | null;
   market: Market | null;
+  research?: WalletResearch;
   createKey: string;
   operationKey: string;
 };

@@ -12,6 +12,8 @@ import {
   VirtualError,
 } from "@/lib/virtual-auth";
 import { walletList, walletMarket, walletState } from "@/lib/virtual-api";
+import { getWalletResearch } from "@/lib/wallet-research";
+import type { WalletResearch } from "@/lib/wallet-tools";
 import { VirtualWalletScreen } from "@/components/virtual-wallet-screen";
 import type { Market, Wallet, WalletState } from "@/lib/virtual-contracts";
 export const dynamic = "force-dynamic";
@@ -43,6 +45,7 @@ export default async function VirtualPage({
   let wallets: Wallet[] = [],
     state: WalletState | null = null,
     market: Market | null = null;
+  let research: WalletResearch | undefined;
   if (session) {
     try {
       wallets = await walletList(session.token);
@@ -55,6 +58,7 @@ export default async function VirtualPage({
       else {
         market = await walletMarket(session.token);
         if (wallet) state = await walletState(session.token, wallet.id);
+        research = await getWalletResearch(session.token, market.assets.map(asset => asset.id));
       }
     } catch (cause) {
       error = safeError(cause);
@@ -100,6 +104,7 @@ export default async function VirtualPage({
                   wallets,
                   state,
                   market,
+                  research,
                   createKey: randomUUID(),
                   operationKey: randomUUID(),
                 }
