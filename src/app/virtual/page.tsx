@@ -58,7 +58,10 @@ export default async function VirtualPage({
       else {
         market = await walletMarket(session.token);
         if (wallet) state = await walletState(session.token, wallet.id);
-        research = await getWalletResearch(session.token, market.assets.map(asset => asset.id));
+        research = await getWalletResearch(
+          session.token,
+          market.assets.map((asset) => asset.id),
+        );
       }
     } catch (cause) {
       error = safeError(cause);
@@ -105,6 +108,7 @@ export default async function VirtualPage({
                   state,
                   market,
                   research,
+                  receivedAt: new Date().toISOString(),
                   createKey: randomUUID(),
                   operationKey: randomUUID(),
                 }

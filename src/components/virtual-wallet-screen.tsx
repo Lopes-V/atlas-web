@@ -10,6 +10,7 @@ export type WalletScreenSnapshot = {
   state: WalletState | null;
   market: Market | null;
   research?: WalletResearch;
+  receivedAt: string;
   createKey: string;
   operationKey: string;
 };

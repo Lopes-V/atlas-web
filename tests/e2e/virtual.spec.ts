@@ -830,3 +830,178 @@ test("a different action requires explicit replacement of an unsent draft", asyn
   await expect(page.getByLabel("Tipo de operação")).toHaveValue("BUY");
   await expect(page.getByLabel("Quantidade", { exact: true })).toHaveValue("");
 });
+
+test("a confirmed balance rejection allows correction or a new draft", async ({
+  page,
+}) => {
+  await create(page, "rejected-balance@example.test");
+  await page.getByLabel("Valor (USDT)").fill("42");
+  await page.getByRole("button", { name: "Registrar operação" }).click();
+  await expect(page.locator("#registro").getByRole("alert")).toContainText(
+    "insuficiente",
+  );
+  await expect(page.getByLabel("Valor (USDT)")).toBeEditable();
+  await page.getByLabel("Valor (USDT)").fill("1");
+  await page.getByRole("button", { name: "Registrar operação" }).click();
+  await expect(page.locator("#registro").getByRole("status")).toContainText(
+    "confirmado",
+  );
+});
+
+test("a lost acknowledgement followed by balance rejection remains uncertain", async ({
+  page,
+}) => {
+  await create(page, "lost-then-rejected@example.test");
+  await page.getByLabel("Valor (USDT)").fill("777");
+  const key = await page.locator('#registro input[name="key"]').inputValue();
+  await page.getByRole("button", { name: "Registrar operação" }).click();
+  await expect(page.locator("#registro").getByRole("alert")).toContainText(
+    "mesma chave",
+  );
+  await page.getByRole("button", { name: "Registrar operação" }).click();
+  await expect(page.locator("#registro").getByRole("alert")).toContainText(
+    "insuficiente",
+  );
+  await page.getByRole("button", { name: "Fechar registro" }).click();
+  await page.getByRole("button", { name: "Comprar", exact: true }).click();
+  await expect(
+    page.getByText("Resolva o envio anterior", { exact: false }),
+  ).toBeVisible();
+  await expect(page.getByLabel("Valor (USDT)")).toHaveAttribute("readonly", "");
+  expect(await page.locator('#registro input[name="key"]').inputValue()).toBe(
+    key,
+  );
+});
+
+test("research latency crossing quote expiry disables current prices while manual records work", async ({
+  page,
+}) => {
+  await page.clock.pauseAt(new Date());
+  await login(page, "slow-research@example.test");
+  await expect(
+    page.getByRole("heading", { name: "Patrimônio incompleto" }),
+  ).toBeVisible();
+  await expect(page.locator("#posicoes")).toContainText("Cotação indisponível");
+  await page.getByRole("button", { name: "Simular BTCUSDT" }).click();
+  await page
+    .getByLabel("Ativo de destino")
+    .selectOption({ label: "ETHUSDT — Ethereum" });
+  await page.getByLabel("Taxa de venda (USDT)").fill("0");
+  await page.getByLabel("Taxa de compra (USDT)").fill("0");
+  await expect(
+    page.getByRole("button", { name: "Preparar troca" }),
+  ).toBeDisabled();
+  await page.getByRole("button", { name: "Comprar BTCUSDT" }).click();
+  await expect(
+    page.getByRole("button", { name: "Usar cotação atual" }),
+  ).toHaveCount(0);
+  await page
+    .getByLabel("Data e hora (seu fuso local)")
+    .fill("2026-01-01T12:00");
+  await page.getByLabel("Quantidade", { exact: true }).fill("1");
+  await page.getByLabel("Preço unitário (USDT)").fill("10");
+  await page.getByLabel("Taxa (USDT)", { exact: true }).fill("0");
+  await page.getByRole("button", { name: "Registrar operação" }).click();
+  await expect(page.locator("#registro").getByRole("status")).toContainText(
+    "confirmado",
+  );
+});
+
+test("prepared prices expire during a delayed refresh and cannot be submitted", async ({
+  page,
+}) => {
+  await page.clock.pauseAt(new Date());
+  await login(page, "slow-after-prepare@example.test");
+  await page.getByRole("button", { name: "Simular BTCUSDT" }).click();
+  await page
+    .getByLabel("Ativo de destino")
+    .selectOption({ label: "ETHUSDT — Ethereum" });
+  await page.getByLabel("Taxa de venda (USDT)").fill("0");
+  await page.getByLabel("Taxa de compra (USDT)").fill("0");
+  await page.getByRole("button", { name: "Preparar troca" }).click();
+  await page.getByRole("button", { name: "Atualizar cotações" }).click();
+  await expect(
+    page.getByText("As cotações preparadas expiraram", { exact: false }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Registrar operação" }),
+  ).toBeDisabled();
+});
+
+test("refresh cannot rewind an expired wallet clock", async ({
+  page,
+  context,
+}) => {
+  await page.clock.install();
+  await login(page, "fresh@example.test");
+  await context.setOffline(true);
+  await page.clock.fastForward(121000);
+  await expect(page.locator("#posicoes")).toContainText("Cotação indisponível");
+  await context.setOffline(false);
+  await Promise.all([
+    page.waitForResponse((response) => response.url().includes("_rsc=")),
+    page.getByRole("button", { name: "Atualizar cotações" }).click(),
+  ]);
+  await page.clock.runFor(1100);
+  await expect(
+    page.getByRole("button", { name: "Atualizar cotações" }),
+  ).toBeEnabled();
+  await expect(page.locator("#posicoes")).toContainText("Cotação indisponível");
+});
+
+test("a confirmed transaction rejection allows an explicit different operation", async ({
+  page,
+}) => {
+  await create(page, "rejected-balance@example.test");
+  await page.getByLabel("Valor (USDT)").fill("42");
+  const key = await page.locator('#registro input[name="key"]').inputValue();
+  await page.getByRole("button", { name: "Registrar operação" }).click();
+  await expect(page.locator("#registro").getByRole("alert")).toContainText(
+    "insuficiente",
+  );
+  await page.getByRole("button", { name: "Fechar registro" }).click();
+  await page.getByRole("button", { name: "Comprar", exact: true }).click();
+  await page.getByRole("button", { name: "Iniciar novo rascunho" }).click();
+  await expect(page.getByLabel("Tipo de operação")).toHaveValue("BUY");
+  expect(
+    await page.locator('#registro input[name="key"]').inputValue(),
+  ).not.toBe(key);
+});
+
+test("an idempotency conflict does not permit discarding the original request", async ({
+  page,
+}) => {
+  await create(page, "conflict-error@example.test");
+  await page.getByLabel("Valor (USDT)").fill("42");
+  const key = await page.locator('#registro input[name="key"]').inputValue();
+  await page.getByRole("button", { name: "Registrar operação" }).click();
+  await expect(page.locator("#registro").getByRole("alert")).toContainText(
+    "chave",
+  );
+  await page.getByRole("button", { name: "Fechar registro" }).click();
+  await page.getByRole("button", { name: "Comprar", exact: true }).click();
+  await expect(
+    page.getByText("Resolva o envio anterior", { exact: false }),
+  ).toBeVisible();
+  await expect(page.getByLabel("Valor (USDT)")).toHaveAttribute("readonly", "");
+  expect(await page.locator('#registro input[name="key"]').inputValue()).toBe(
+    key,
+  );
+});
+
+test("the ledger check-constraint balance rejection is correctable", async ({
+  page,
+}) => {
+  await create(page, "rejected-23514@example.test");
+  await page.getByLabel("Valor (USDT)").fill("42");
+  await page.getByRole("button", { name: "Registrar operação" }).click();
+  await expect(page.locator("#registro").getByRole("alert")).toContainText(
+    "insuficiente",
+  );
+  await expect(page.getByLabel("Valor (USDT)")).toBeEditable();
+  await page.getByLabel("Valor (USDT)").fill("1");
+  await page.getByRole("button", { name: "Registrar operação" }).click();
+  await expect(page.locator("#registro").getByRole("status")).toContainText(
+    "confirmado",
+  );
+});

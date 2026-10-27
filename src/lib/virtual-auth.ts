@@ -14,6 +14,7 @@ export class VirtualError extends Error {
   constructor(
     public readonly code: "setup" | "auth" | "unavailable" | "request",
     message: string,
+    public readonly transactionRejected = false,
   ) {
     super(message);
   }
@@ -98,6 +99,13 @@ export async function userRequest(
       throw new VirtualError(
         "request",
         "Saldo ou posição insuficiente no histórico. Revise também operações retroativas e estornos.",
+        path === "/rest/v1/rpc/virtual_wallet_apply" &&
+          response.status === 400 &&
+          ["23514", "P0001"].includes(data?.code) &&
+          [
+            "insufficient cash during chronological replay",
+            "insufficient asset balance during chronological replay",
+          ].includes(message),
       );
     throw new VirtualError(
       "request",

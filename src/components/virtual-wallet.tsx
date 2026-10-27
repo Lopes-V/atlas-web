@@ -1,7 +1,13 @@
 "use client";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useActionState, useEffect, useState, useTransition } from "react";
+import {
+  useActionState,
+  useEffect,
+  useRef,
+  useState,
+  useTransition,
+} from "react";
 import {
   createWalletAction,
   historyAction,
@@ -57,6 +63,7 @@ export function VirtualWallet({
   createKey,
   operationKey,
   research,
+  receivedAt,
   writesPaused = false,
 }: {
   wallets: Wallet[];
@@ -65,34 +72,85 @@ export function VirtualWallet({
   createKey: string;
   operationKey: string;
   research?: WalletResearch;
+  receivedAt: string;
   writesPaused?: boolean;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [privacy, setPrivacy] = usePreference("virtual:hidden", "false"),
     hidden = privacy === "true";
-  const [now, setNow] = useState(() =>
-    Date.parse(
-      market?.evaluated_at ?? state?.evaluated_at ?? new Date().toISOString(),
-    ),
-  );
-  useEffect(() => {
-    const baseline = Date.parse(
-        state?.evaluated_at ?? market?.evaluated_at ?? new Date().toISOString(),
-      ),
-      started = performance.now();
-    const clock = window.setInterval(
-      () => setNow(baseline + performance.now() - started),
-      1000,
+  const serverTime = Date.parse(receivedAt);
+  const [clockTick, setClockTick] = useState(serverTime);
+  const clockRef = useRef({ base: serverTime, mono: 0, ready: false });
+  const refreshStarted = useRef<number | null>(null);
+  const currentTime = () => {
+    if (typeof window === "undefined") return serverTime;
+    const clock = clockRef.current;
+    return Math.max(
+      serverTime,
+      Date.now(),
+      clock.ready
+        ? clock.base + Math.max(0, performance.now() - clock.mono)
+        : serverTime,
     );
-    return () => clearInterval(clock);
-  }, [state?.evaluated_at, market?.evaluated_at]);
+  };
+  const now = Math.max(clockTick, serverTime);
   useEffect(() => {
-    const refresh = window.setInterval(() => {
-      if (!document.hidden && navigator.onLine && !pending)
+    const mono = performance.now();
+    const clock = clockRef.current;
+    const prior = clock.ready
+      ? clock.base + Math.max(0, mono - clock.mono)
+      : serverTime;
+    // A measured round trip bounds response transit conservatively. On initial
+    // load, use the most recent completed virtual-page resource or navigation.
+    const resources = performance
+      .getEntriesByType("resource")
+      .filter((entry) => {
+        try {
+          return new URL(entry.name).pathname === "/virtual";
+        } catch {
+          return false;
+        }
+      });
+    const nav = performance.getEntriesByType("navigation")[0];
+    const roundTrip =
+      refreshStarted.current !== null
+        ? Math.max(0, mono - refreshStarted.current)
+        : (resources.at(-1)?.duration ??
+          (!clock.ready ? (nav?.duration ?? 0) : 0));
+    refreshStarted.current = null;
+    clockRef.current = {
+      base: Math.max(prior, Date.now(), serverTime + roundTrip),
+      mono,
+      ready: true,
+    };
+    const advance = () => {
+      const c = clockRef.current;
+      const value = Math.max(
+        Date.now(),
+        c.base + Math.max(0, performance.now() - c.mono),
+      );
+      setClockTick((previous) => Math.max(previous, value));
+    };
+    const initial = window.setTimeout(advance, 0);
+    const timer = window.setInterval(advance, 1000);
+    return () => {
+      clearTimeout(initial);
+      clearInterval(timer);
+    };
+  }, [serverTime]);
+  const refresh = () => {
+    refreshStarted.current = performance.now();
+    startTransition(() => router.refresh());
+  };
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      if (!document.hidden && navigator.onLine && !pending) {
+        refreshStarted.current = performance.now();
         startTransition(() => router.refresh());
+      }
     }, 30_000);
-    return () => clearInterval(refresh);
+    return () => clearInterval(timer);
   }, [router, pending]);
   const display = (value: string | null | undefined) =>
     hidden ? "••••••" : value == null ? "Indisponível" : virtualMoney(value);
@@ -102,6 +160,8 @@ export function VirtualWallet({
       (position) =>
         position.price !== null &&
         position.observed_at !== null &&
+        Date.parse(state.evaluated_at) - Date.parse(position.observed_at) >=
+          0 &&
         now - Date.parse(position.observed_at) >= 0 &&
         now - Date.parse(position.observed_at) <= 120000,
     );
@@ -146,7 +206,7 @@ export function VirtualWallet({
           </button>
           <button
             className="toolbar-button"
-            onClick={() => startTransition(() => router.refresh())}
+            onClick={refresh}
             disabled={pending}
           >
             {pending ? "Atualizando…" : "Atualizar cotações"}
@@ -236,6 +296,9 @@ export function VirtualWallet({
                   const fresh =
                     position.price !== null &&
                     position.observed_at !== null &&
+                    Date.parse(state.evaluated_at) -
+                      Date.parse(position.observed_at) >=
+                      0 &&
                     now - Date.parse(position.observed_at) >= 0 &&
                     now - Date.parse(position.observed_at) <= 120000;
                   return (
@@ -338,12 +401,16 @@ export function VirtualWallet({
             onClose={() => setOpen(false)}
             request={request}
             now={now}
+            currentTime={currentTime}
+            updateClock={setClockTick}
           />
           <WalletSimulator
             selection={simSource}
             state={state}
             market={market}
             now={now}
+            currentTime={currentTime}
+            updateClock={setClockTick}
             hidden={hidden}
             onPrepare={(values, quotes) =>
               openAction("SWAP", undefined, values, quotes)
@@ -447,6 +514,8 @@ function OperationForm({
   onClose,
   request,
   now,
+  currentTime,
+  updateClock,
 }: {
   walletId: string;
   initialKey: string;
@@ -460,6 +529,8 @@ function OperationForm({
   onClose: () => void;
   request: DraftRequest | null;
   now: number;
+  currentTime: () => number;
+  updateClock: (time: number) => void;
 }) {
   const [kind, setKind] = useState("DEPOSIT");
   const [result, action, pending] = useActionState(recordOperationAction, {});
@@ -609,6 +680,21 @@ function OperationForm({
       )}
       <form
         action={action}
+        onSubmit={(event) => {
+          const time = currentTime();
+          if (
+            prepared &&
+            !uncertain &&
+            ![prepared.sell, prepared.buy].every(
+              (q) =>
+                usableQuote(q, Date.parse(prepared.evaluatedAt)) &&
+                usableQuote(q, time),
+            )
+          ) {
+            event.preventDefault();
+            updateClock(time);
+          }
+        }}
         className="virtual-form"
         hidden={!!(active && result.success)}
       >
@@ -708,7 +794,15 @@ function OperationForm({
                       type="button"
                       disabled={!!locked}
                       className="button"
-                      onClick={() => change("unit_price", quote.price)}
+                      onClick={() => {
+                        const time = currentTime();
+                        if (
+                          usableQuote(quote, Date.parse(market.evaluated_at)) &&
+                          usableQuote(quote, time)
+                        )
+                          change("unit_price", quote.price);
+                        else updateClock(time);
+                      }}
                     >
                       Usar cotação atual
                     </button>

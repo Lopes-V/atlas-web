@@ -2,7 +2,11 @@
 import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { operationSchema } from "@/lib/virtual-contracts";
-import { requireVirtualSession, safeError } from "@/lib/virtual-auth";
+import {
+  requireVirtualSession,
+  safeError,
+  VirtualError,
+} from "@/lib/virtual-auth";
 import {
   applyOperation,
   createWallet,
@@ -38,6 +42,7 @@ export async function recordOperationAction(
   _previous: MutationResult,
   form: FormData,
 ): Promise<MutationResult> {
+  let phase: "before" | "write" | "read" = "before";
   try {
     const { token } = await requireVirtualSession();
     const fields = Object.fromEntries(
@@ -53,7 +58,9 @@ export async function recordOperationAction(
         rejection:
           _previous.rejection === "uncertain" ? "uncertain" : "definitive",
       };
+    phase = "write";
     await applyOperation(token, String(walletId), request, String(key));
+    phase = "read";
     await walletState(token, String(walletId));
     revalidatePath("/virtual");
     return {
@@ -64,7 +71,13 @@ export async function recordOperationAction(
     return {
       error: safeError(error),
       key: String(form.get("key") ?? ""),
-      rejection: "uncertain",
+      rejection:
+        phase === "write" &&
+        _previous.rejection !== "uncertain" &&
+        error instanceof VirtualError &&
+        error.transactionRejected
+          ? "definitive"
+          : "uncertain",
     };
   }
 }

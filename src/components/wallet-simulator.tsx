@@ -11,6 +11,8 @@ export function WalletSimulator({
   state,
   market,
   now,
+  currentTime,
+  updateClock,
   hidden,
   onPrepare,
   selection,
@@ -18,6 +20,8 @@ export function WalletSimulator({
   state: WalletState;
   market: Market | null;
   now: number;
+  currentTime: () => number;
+  updateClock: (time: number) => void;
   hidden: boolean;
   onPrepare: (
     values: Record<string, string>,
@@ -198,6 +202,18 @@ export function WalletSimulator({
                 !result.targetQuantity
               )
                 return;
+              const time = currentTime();
+              if (
+                !market ||
+                ![sellQuote, buyQuote].every(
+                  (q) =>
+                    usableQuote(q, Date.parse(market.evaluated_at)) &&
+                    usableQuote(q, time),
+                )
+              ) {
+                updateClock(time);
+                return;
+              }
               onPrepare(
                 {
                   sell_asset_id: source,
