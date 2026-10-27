@@ -193,7 +193,7 @@ test("validation rejects decimals beyond database scale and retries retain the i
     await page.locator('#registro input[name="key"]').inputValue(),
   ).not.toBe(key);
   await expect(
-    page.locator("#historico").getByText("DEPOSIT", { exact: true }),
+    page.locator("#historico").getByText("Código: DEPOSIT", { exact: true }),
   ).toHaveCount(1);
 });
 test("partial valuation stays unavailable and history paginates manually with reversal", async ({
@@ -372,7 +372,7 @@ test("ambiguous operation keeps its exact draft and key through a failed 30s rea
     "confirmado",
   );
   await expect(
-    page.locator("#historico").getByText("DEPOSIT", { exact: true }),
+    page.locator("#historico").getByText("Código: DEPOSIT", { exact: true }),
   ).toHaveCount(1);
   expect(
     await page.locator('#registro input[name="key"]').inputValue(),
@@ -467,7 +467,7 @@ test("ambiguous write stays hidden with its original key during Auth503 and rest
     "confirmado",
   );
   await expect(
-    page.locator("#historico").getByText("DEPOSIT", { exact: true }),
+    page.locator("#historico").getByText("Código: DEPOSIT", { exact: true }),
   ).toHaveCount(1);
 });
 
@@ -599,4 +599,151 @@ test("position distinguishes unit quote from total value", async ({ page }) => {
       .filter({ hasText: "Valor da posição" })
       .locator("+ dd"),
   ).toHaveText("20,00 USDT");
+});
+
+test("prepared swap expires while closed and requires an explicit manual price choice", async ({
+  page,
+  context,
+}) => {
+  await page.clock.install();
+  await login(page, "fresh@example.test");
+  await page.getByRole("button", { name: "Simular BTCUSDT" }).click();
+  await page
+    .getByLabel("Ativo de destino")
+    .selectOption({ label: "ETHUSDT — Ethereum" });
+  await page.getByLabel("Taxa de venda (USDT)").fill("0");
+  await page.getByLabel("Taxa de compra (USDT)").fill("0");
+  await page.getByRole("button", { name: "Preparar troca" }).click();
+  await page.getByRole("button", { name: "Fechar registro" }).click();
+  await context.setOffline(true);
+  await page.clock.fastForward(121000);
+  await page.getByRole("button", { name: "Trocar", exact: true }).click();
+  await expect(
+    page.getByText("As cotações preparadas expiraram", { exact: false }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Registrar operação" }),
+  ).toBeDisabled();
+  await page
+    .getByRole("button", { name: "Usar preços declarados manualmente" })
+    .click();
+  await expect(
+    page.getByRole("button", { name: "Registrar operação" }),
+  ).toBeEnabled();
+});
+
+test("new confirmed draft uses current local time while ambiguous retry keeps its date and payload", async ({
+  page,
+}) => {
+  await page.clock.install();
+  await create(page);
+  await page.getByLabel("Valor (USDT)").fill("1");
+  await page.getByRole("button", { name: "Registrar operação" }).click();
+  await expect(page.locator("#registro").getByRole("status")).toContainText(
+    "confirmado",
+  );
+  const old = await page
+    .getByLabel("Data e hora (seu fuso local)")
+    .inputValue();
+  await page.getByRole("button", { name: "Fechar registro" }).click();
+  await page.clock.runFor(120000);
+  await page.getByRole("button", { name: "Adicionar saldo" }).click();
+  const next = await page
+    .getByLabel("Data e hora (seu fuso local)")
+    .inputValue();
+  expect(next).not.toBe(old);
+  await page
+    .getByLabel("Data e hora (seu fuso local)")
+    .fill("2026-01-01T12:00");
+  const retryDate = await page
+    .getByLabel("Data e hora (seu fuso local)")
+    .inputValue();
+  await page.getByLabel("Valor (USDT)").fill("777");
+  await page.getByRole("button", { name: "Registrar operação" }).click();
+  await expect(page.locator("#registro").getByRole("alert")).toContainText(
+    "mesma chave",
+  );
+  const key = await page.locator('#registro input[name="key"]').inputValue();
+  await page.getByRole("button", { name: "Fechar registro" }).click();
+  await page.clock.runFor(120000);
+  await page.getByRole("button", { name: "Comprar", exact: true }).click();
+  await expect(
+    page.getByText("Resolva o envio anterior", { exact: false }),
+  ).toBeVisible();
+  await expect(page.getByLabel("Tipo de operação")).toHaveValue("DEPOSIT");
+  await expect(page.getByLabel("Data e hora (seu fuso local)")).toHaveValue(
+    retryDate,
+  );
+  await expect(page.getByLabel("Valor (USDT)")).toHaveValue("777");
+  await expect(page.getByLabel("Valor (USDT)")).toHaveAttribute("readonly", "");
+  expect(await page.locator('#registro input[name="key"]').inputValue()).toBe(
+    key,
+  );
+});
+
+test("definitive validation rejection permits an explicit new buy draft", async ({
+  page,
+}) => {
+  await create(page);
+  await page.getByLabel("Valor (USDT)").fill("1.0000000000000000001");
+  const key = await page.locator('#registro input[name="key"]').inputValue();
+  await page.getByRole("button", { name: "Registrar operação" }).click();
+  await expect(page.locator("#registro").getByRole("alert")).toContainText(
+    "18",
+  );
+  await page.getByRole("button", { name: "Fechar registro" }).click();
+  await page.getByRole("button", { name: "Comprar", exact: true }).click();
+  await page.getByRole("button", { name: "Iniciar novo rascunho" }).click();
+  await expect(page.getByLabel("Tipo de operação")).toHaveValue("BUY");
+  expect(
+    await page.locator('#registro input[name="key"]').inputValue(),
+  ).not.toBe(key);
+});
+
+test("a rejected read after a committed write remains uncertain", async ({
+  page,
+}) => {
+  await create(page, "post-write-read-request@example.test");
+  await page.getByLabel("Valor (USDT)").fill("42");
+  const key = await page.locator('#registro input[name="key"]').inputValue();
+  await page.getByRole("button", { name: "Registrar operação" }).click();
+  await expect(page.locator("#registro").getByRole("alert")).toBeVisible();
+  await page.getByRole("button", { name: "Fechar registro" }).click();
+  await page.getByRole("button", { name: "Comprar", exact: true }).click();
+  await expect(
+    page.getByText("Resolva o envio anterior", { exact: false }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Iniciar novo rascunho" }),
+  ).toHaveCount(0);
+  await expect(page.getByLabel("Valor (USDT)")).toHaveValue("42");
+  expect(await page.locator('#registro input[name="key"]').inputValue()).toBe(
+    key,
+  );
+  await page.getByRole("button", { name: "Registrar operação" }).click();
+  await expect(
+    page
+      .locator("#registro")
+      .getByRole("status")
+      .filter({ hasText: "confirmado" }),
+  ).toBeVisible();
+});
+
+test("changing operation type clears prepared swap prices", async ({
+  page,
+}) => {
+  await login(page, "fresh@example.test");
+  await page.getByRole("button", { name: "Simular BTCUSDT" }).click();
+  await page
+    .getByLabel("Ativo de destino")
+    .selectOption({ label: "ETHUSDT — Ethereum" });
+  await page.getByLabel("Taxa de venda (USDT)").fill("0");
+  await page.getByLabel("Taxa de compra (USDT)").fill("0");
+  await page.getByRole("button", { name: "Preparar troca" }).click();
+  await page.getByLabel("Tipo de operação").selectOption("BUY");
+  await page.getByLabel("Tipo de operação").selectOption("SWAP");
+  await expect(page.getByLabel("Venda: preço unitário (USDT)")).toHaveValue("");
+  await expect(page.getByLabel("Compra: preço unitário (USDT)")).toHaveValue(
+    "",
+  );
 });

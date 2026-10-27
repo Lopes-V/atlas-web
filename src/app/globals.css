@@ -96,7 +96,7 @@
 .virtual-hero { padding: 24px 28px; }
 .virtual-hero h1 { font-size: 28px; margin: 4px 0; }
 .wallet-actions { display: flex; flex-wrap: wrap; gap: 10px; margin: 16px 0; }
-.wallet-drawer:not([hidden]) { position: fixed; z-index: 100; top: 0; right: 0; bottom: 0; width: min(100%, 660px); margin: 0; overflow-y: auto; box-shadow: 0 0 0 100vmax #0008; border-radius: 0; }
+.wallet-drawer:not([hidden]) { position: fixed; z-index: 100; top: 0; right: 0; bottom: 0; width: min(100%, 660px); margin: 0; overflow-y: auto; box-shadow: 0 0 24px #0004; border-radius: 0; }
 .virtual-panel summary { cursor: pointer; color: #006642; font-weight: 700; }
 .simulation-results { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
 .simulation-results dd { margin: 4px 0; overflow-wrap: anywhere; }

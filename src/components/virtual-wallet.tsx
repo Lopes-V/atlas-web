@@ -23,6 +23,24 @@ import {
 } from "@/lib/virtual-contracts";
 
 type Entry = WalletHistory["operations"][number];
+type PreparedQuotes = {
+  sell: NonNullable<Market["assets"][number]["quote"]>;
+  buy: NonNullable<Market["assets"][number]["quote"]>;
+  evaluatedAt: string;
+};
+type DraftRequest = {
+  kind: string;
+  asset?: string;
+  values?: Record<string, string>;
+  quotes?: PreparedQuotes;
+  serial: number;
+};
+function localNow() {
+  const date = new Date();
+  return new Date(date.getTime() - date.getTimezoneOffset() * 60000)
+    .toISOString()
+    .slice(0, 16);
+}
 const names = {
   DEPOSIT: "Depósito",
   WITHDRAWAL: "Retirada",
@@ -94,18 +112,14 @@ export function VirtualWallet({
     id: string;
     serial: number;
   } | null>(null);
-  const [request, setRequest] = useState<{
-    kind: string;
-    asset?: string;
-    values?: Record<string, string>;
-    serial: number;
-  } | null>(null);
+  const [request, setRequest] = useState<DraftRequest | null>(null);
   const openAction = (
     kind: string,
     asset?: string,
     values?: Record<string, string>,
+    quotes?: PreparedQuotes,
   ) => {
-    setRequest({ kind, asset, values, serial: Date.now() });
+    setRequest({ kind, asset, values, quotes, serial: Date.now() });
     setOpen(true);
   };
   return (
@@ -331,7 +345,9 @@ export function VirtualWallet({
             market={market}
             now={now}
             hidden={hidden}
-            onPrepare={(values) => openAction("SWAP", undefined, values)}
+            onPrepare={(values, quotes) =>
+              openAction("SWAP", undefined, values, quotes)
+            }
           />
           <WalletResearchPanel
             research={research}
@@ -346,7 +362,7 @@ export function VirtualWallet({
             market={market}
             onReverse={(entry) => {
               setReversal(entry);
-              setOpen(true);
+              openAction("REVERSAL", undefined, { reversal_of: entry.id });
               document
                 .getElementById("registro")
                 ?.scrollIntoView({ behavior: "smooth" });
@@ -442,50 +458,88 @@ function OperationForm({
   positions: WalletState["positions"];
   open: boolean;
   onClose: () => void;
-  request: {
-    kind: string;
-    asset?: string;
-    values?: Record<string, string>;
-    serial: number;
-  } | null;
+  request: DraftRequest | null;
   now: number;
 }) {
   const [kind, setKind] = useState("DEPOSIT");
   const [result, action, pending] = useActionState(recordOperationAction, {});
-  const [stableKey] = useState(initialKey);
+  const [stableKey, setStableKey] = useState(initialKey);
+  const [dismissed, setDismissed] = useState<typeof result | null>(null);
+  const active = result !== dismissed;
+  const uncertain = active && result.rejection === "uncertain";
+  const locked = uncertain || pending;
+  const [queued, setQueued] = useState<DraftRequest | null>(null);
+  const [prepared, setPrepared] = useState<PreparedQuotes | null>(null);
+  const [localDate, setLocalDate] = useState("");
   const [values, setValues] = useState<Record<string, string>>({});
-  const change = (name: string, value: string) =>
-    setValues((previous) => ({ ...previous, [name]: value }));
+  const [seenResult, setSeenResult] = useState(result);
+  if (result !== seenResult) {
+    setSeenResult(result);
+    if (result.success) {
+      setValues({});
+      setPrepared(null);
+      setLocalDate(localNow());
+      setQueued(null);
+    }
+  }
+  const change = (name: string, value: string) => {
+    if (
+      !locked &&
+      !(
+        prepared &&
+        [
+          "sell_asset_id",
+          "buy_asset_id",
+          "sell_unit_price",
+          "buy_unit_price",
+        ].includes(name)
+      )
+    )
+      setValues((previous) => ({ ...previous, [name]: value }));
+  };
   const [seenRequest, setSeenRequest] = useState(request);
   if (request !== seenRequest) {
     setSeenRequest(request);
-    // An unresolved submission must retain its exact payload and idempotency key.
-    if (request && !result.error && !pending) {
-      setKind(request.kind);
-      if (request.asset || request.values)
-        setValues((previous) => ({
-          ...previous,
+    if (request && (pending || (active && result.error))) setQueued(request);
+    else if (request) {
+      const freshDraft =
+        !!(active && result.success) ||
+        request.kind !== kind ||
+        !!request.asset ||
+        !!request.values;
+      if (freshDraft) {
+        if (active && result.success) {
+          setStableKey(result.key ?? stableKey);
+          setDismissed(result);
+        }
+        setQueued(null);
+        setKind(request.kind);
+        setValues({
           ...(request.asset ? { asset_id: request.asset } : {}),
           ...request.values,
-        }));
+        });
+        setPrepared(request.quotes ?? null);
+        setLocalDate(localNow());
+      } else if (!localDate) setLocalDate(localNow());
     }
   }
   const selected = kind;
-  // Changing the reversal selection is an explicit form choice, not a monetary calculation.
-  const [seenReversal, setSeenReversal] = useState<Entry | null>(null);
-  if (reversal !== seenReversal) {
-    setSeenReversal(reversal);
-    if (reversal && !result.error && !pending) {
-      setKind("REVERSAL");
-      change("reversal_of", reversal.id);
-    }
-  }
+  const preparedFresh =
+    !prepared ||
+    [prepared.sell, prepared.buy].every(
+      (q) =>
+        usableQuote(q, Date.parse(prepared.evaluatedAt)) && usableQuote(q, now),
+    );
   const numberInput = (name: string, label: string) => (
     <label key={name}>
       {label}
       <input
         name={name}
         value={values[name] ?? ""}
+        readOnly={
+          !!locked ||
+          (!!prepared && ["sell_unit_price", "buy_unit_price"].includes(name))
+        }
         onChange={(event) => change(name, event.target.value)}
         inputMode="decimal"
         type={hidden ? "password" : "text"}
@@ -525,15 +579,6 @@ function OperationForm({
       {numberInput(`${prefix}fees`, `${title}taxa (USDT)`)}
     </>
   );
-  const [localDate, setLocalDate] = useState("");
-  useEffect(() => {
-    const date = new Date();
-    const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000)
-      .toISOString()
-      .slice(0, 16);
-    const timer = window.setTimeout(() => setLocalDate(local), 0);
-    return () => window.clearTimeout(timer);
-  }, []);
   const occurredAt = localInputToISO(localDate);
   return (
     <section
@@ -541,7 +586,6 @@ function OperationForm({
       id="registro"
       hidden={!open}
       role="dialog"
-      aria-modal="true"
       aria-labelledby="registro-title"
     >
       <button type="button" className="toolbar-button" onClick={onClose}>
@@ -555,7 +599,11 @@ function OperationForm({
       </p>
       <form action={action} className="virtual-form">
         <fieldset className="virtual-draft" disabled={writesPaused}>
-          <input name="key" type="hidden" value={result.key ?? stableKey} />
+          <input
+            name="key"
+            type="hidden"
+            value={active ? (result.key ?? stableKey) : stableKey}
+          />
           <input name="walletId" type="hidden" value={walletId} />
           <div className="virtual-fields">
             <label>
@@ -563,7 +611,14 @@ function OperationForm({
               <select
                 name="kind"
                 value={selected}
-                onChange={(event) => setKind(event.target.value)}
+                onChange={(event) => {
+                  if (!locked && !(active && result.error)) {
+                    setKind(event.target.value);
+                    setValues({});
+                    setLocalDate(localNow());
+                    setPrepared(null);
+                  }
+                }}
               >
                 {Object.entries(names).map(([value, label]) => (
                   <option key={value} value={value}>
@@ -578,7 +633,10 @@ function OperationForm({
                 type="datetime-local"
                 value={localDate}
                 required
-                onChange={(event) => setLocalDate(event.target.value)}
+                readOnly={!!locked}
+                onChange={(event) => {
+                  if (!locked) setLocalDate(event.target.value);
+                }}
               />
               <input name="occurred_at" type="hidden" value={occurredAt} />
               <small>
@@ -600,6 +658,7 @@ function OperationForm({
                       {["25", "50", "100"].map((pct) => (
                         <button
                           type="button"
+                          disabled={!!locked}
                           className="button"
                           key={pct}
                           onClick={() => {
@@ -628,6 +687,7 @@ function OperationForm({
                     quote ? (
                     <button
                       type="button"
+                      disabled={!!locked}
                       className="button"
                       onClick={() => change("unit_price", quote.price)}
                     >
@@ -686,13 +746,72 @@ function OperationForm({
               </label>
             )}
           </div>
-          {result.error && (
+          {active &&
+            result.error &&
+            queued &&
+            (uncertain ? (
+              <p role="status">
+                Resolva o envio anterior antes de iniciar outra operação. A
+                chave e os dados originais foram preservados.
+              </p>
+            ) : (
+              <button
+                type="button"
+                className="button"
+                onClick={() => {
+                  setDismissed(result);
+                  setStableKey(crypto.randomUUID());
+                  setKind(queued.kind);
+                  setValues({
+                    ...(queued.asset ? { asset_id: queued.asset } : {}),
+                    ...queued.values,
+                  });
+                  setPrepared(queued.quotes ?? null);
+                  setLocalDate(localNow());
+                  setQueued(null);
+                }}
+              >
+                Iniciar novo rascunho
+              </button>
+            ))}
+          {prepared && (
+            <p>
+              Preços preparados com cotações Kraken observadas em{" "}
+              {new Date(prepared.sell.observed_at).toLocaleString("pt-BR", {
+                timeZone: "America/Sao_Paulo",
+              })}{" "}
+              e{" "}
+              {new Date(prepared.buy.observed_at).toLocaleString("pt-BR", {
+                timeZone: "America/Sao_Paulo",
+              })}
+              .
+            </p>
+          )}
+          {prepared && !preparedFresh && (
+            <p role="status">
+              As cotações preparadas expiraram. Prepare novamente com preços
+              atuais ou confirme que usará preços declarados manualmente.
+            </p>
+          )}
+          {prepared && !locked && (
+            <button
+              type="button"
+              className="button"
+              onClick={() => setPrepared(null)}
+            >
+              Usar preços declarados manualmente
+            </button>
+          )}
+          {active && result.error && (
             <p role="alert" className="form-error">
               {result.error}
             </p>
           )}
-          {result.success && <p role="status">{result.success}</p>}
-          <button className="button primary" disabled={pending || writesPaused}>
+          {active && result.success && <p role="status">{result.success}</p>}
+          <button
+            className="button primary"
+            disabled={pending || writesPaused || (!preparedFresh && !uncertain)}
+          >
             {pending ? "Confirmando…" : "Registrar operação"}
           </button>
           <small>
@@ -735,7 +854,6 @@ function History({
                   <strong>
                     {names[entry.kind as keyof typeof names] ?? entry.kind}
                   </strong>
-                  <small>{entry.kind}</small>
                   {!hidden && (
                     <span>
                       {Object.entries(entry.request)
@@ -770,6 +888,7 @@ function History({
                 </div>
                 <details>
                   <summary>Detalhes do registro {entry.sequence}</summary>
+                  <p>Código: {entry.kind}</p>
                   <p>ID: {entry.id}</p>
                   <p>
                     Registrado em:{" "}

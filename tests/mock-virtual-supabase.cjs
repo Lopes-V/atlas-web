@@ -246,6 +246,7 @@ globalThis.fetch = async function (input, init) {
   const wallet = wallets.get(body.p_wallet_id);
   if (!wallet || wallet.owner !== user.id)
     return Response.json({}, { status: 403 });
+  if (rpc === "virtual_wallet_state" && user.failStateNext) { user.failStateNext = false; return Response.json({message:"read rejected"}, {status:400}); }
   if (rpc === "virtual_wallet_state") return Response.json(state(wallet));
   if (rpc === "virtual_wallet_history")
     return Response.json({
@@ -289,6 +290,7 @@ globalThis.fetch = async function (input, init) {
     const operation = entry(request, wallet.operations.length + 1);
     wallet.operations.push(operation);
     wallet.keys.set(body.p_key, { request: serialized, id: operation.id });
+    if (user.mode === "post-write-read-request" && request.amount === "42") user.failStateNext = true;
     if (request.amount === "777" && !attempts.has(body.p_key)) {
       attempts.add(body.p_key);
       if (user.mode === "retry-read-operation") user.failNextRead = true;

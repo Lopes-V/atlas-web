@@ -19,7 +19,14 @@ export function WalletSimulator({
   market: Market | null;
   now: number;
   hidden: boolean;
-  onPrepare: (values: Record<string, string>) => void;
+  onPrepare: (
+    values: Record<string, string>,
+    quotes: {
+      sell: NonNullable<Market["assets"][number]["quote"]>;
+      buy: NonNullable<Market["assets"][number]["quote"]>;
+      evaluatedAt: string;
+    },
+  ) => void;
   selection: { id: string; serial: number } | null;
 }) {
   const [source, setSource] = useState("");
@@ -191,16 +198,23 @@ export function WalletSimulator({
                 !result.targetQuantity
               )
                 return;
-              onPrepare({
-                sell_asset_id: source,
-                sell_quantity: result.sourceQuantity,
-                sell_unit_price: sellQuote.price,
-                sell_fees: sellFee,
-                buy_asset_id: target,
-                buy_quantity: result.targetQuantity,
-                buy_unit_price: buyQuote.price,
-                buy_fees: buyFee,
-              });
+              onPrepare(
+                {
+                  sell_asset_id: source,
+                  sell_quantity: result.sourceQuantity,
+                  sell_unit_price: sellQuote.price,
+                  sell_fees: sellFee,
+                  buy_asset_id: target,
+                  buy_quantity: result.targetQuantity,
+                  buy_unit_price: buyQuote.price,
+                  buy_fees: buyFee,
+                },
+                {
+                  sell: sellQuote,
+                  buy: buyQuote,
+                  evaluatedAt: market!.evaluated_at,
+                },
+              );
             }}
           >
             Preparar troca

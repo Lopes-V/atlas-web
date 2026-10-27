@@ -1,6 +1,7 @@
 "use server";
 import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
+import { operationSchema } from "@/lib/virtual-contracts";
 import { requireVirtualSession, safeError } from "@/lib/virtual-auth";
 import {
   applyOperation,
@@ -13,6 +14,7 @@ export type MutationResult = {
   success?: string;
   walletId?: string;
   key?: string;
+  rejection?: "definitive" | "uncertain";
 };
 export async function createWalletAction(
   _previous: MutationResult,
@@ -42,6 +44,15 @@ export async function recordOperationAction(
       [...form.entries()].filter(([name]) => !name.startsWith("$ACTION_")),
     );
     const { key, walletId, ...request } = fields;
+    const parsed = operationSchema.safeParse(request);
+    if (!parsed.success)
+      return {
+        error:
+          parsed.error.issues[0]?.message ?? "Revise os dados da operação.",
+        key: String(key ?? ""),
+        rejection:
+          _previous.rejection === "uncertain" ? "uncertain" : "definitive",
+      };
     await applyOperation(token, String(walletId), request, String(key));
     await walletState(token, String(walletId));
     revalidatePath("/virtual");
@@ -50,7 +61,11 @@ export async function recordOperationAction(
       key: randomUUID(),
     };
   } catch (error) {
-    return { error: safeError(error), key: String(form.get("key") ?? "") };
+    return {
+      error: safeError(error),
+      key: String(form.get("key") ?? ""),
+      rejection: "uncertain",
+    };
   }
 }
 export async function historyAction(walletId: string, before: number) {
