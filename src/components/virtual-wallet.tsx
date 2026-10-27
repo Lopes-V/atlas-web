@@ -9,6 +9,9 @@ import {
 } from "@/app/virtual/actions";
 import { usePreference } from "@/lib/preferences";
 import { percent } from "@/lib/finance";
+import { quantityForPercent, type WalletResearch } from "@/lib/wallet-tools";
+import { WalletSimulator } from "./wallet-simulator";
+import { WalletResearchPanel } from "./wallet-research-panel";
 import {
   usableQuote,
   localInputToISO,
@@ -35,6 +38,7 @@ export function VirtualWallet({
   market,
   createKey,
   operationKey,
+  research,
   writesPaused = false,
 }: {
   wallets: Wallet[];
@@ -42,6 +46,7 @@ export function VirtualWallet({
   market: Market | null;
   createKey: string;
   operationKey: string;
+  research?: WalletResearch;
   writesPaused?: boolean;
 }) {
   const router = useRouter();
@@ -83,6 +88,26 @@ export function VirtualWallet({
         now - Date.parse(position.observed_at) <= 120000,
     );
   const [reversal, setReversal] = useState<Entry | null>(null);
+  const [open, setOpen] = useState(false);
+  const [creationOpen, setCreationOpen] = useState(wallets.length === 0);
+  const [simSource, setSimSource] = useState<{
+    id: string;
+    serial: number;
+  } | null>(null);
+  const [request, setRequest] = useState<{
+    kind: string;
+    asset?: string;
+    values?: Record<string, string>;
+    serial: number;
+  } | null>(null);
+  const openAction = (
+    kind: string,
+    asset?: string,
+    values?: Record<string, string>,
+  ) => {
+    setRequest({ kind, asset, values, serial: Date.now() });
+    setOpen(true);
+  };
   return (
     <>
       <div className="virtual-toolbar">
@@ -130,29 +155,62 @@ export function VirtualWallet({
                 valem zero.
               </p>
             )}
-            <div className="virtual-stats">
-              {[
-                ["Caixa disponível", state.cash],
-                ["Aportes líquidos", state.net_contributions],
-                ["Ganho realizado", state.realized_pnl],
-                ["Ganho não realizado", complete ? state.unrealized_pnl : null],
-                ["Custo das posições", state.cost_basis],
-                ["Taxas acumuladas", state.fees],
-              ].map(([label, value]) => (
-                <div key={label}>
-                  <span>{label}</span>
-                  <strong>{display(value)}</strong>
-                </div>
-              ))}
+            <div className="wallet-actions">
+              <button
+                className="button primary"
+                onClick={() => openAction("DEPOSIT")}
+              >
+                Adicionar saldo
+              </button>
+              <button className="button" onClick={() => openAction("BUY")}>
+                Comprar
+              </button>
+              <button className="button" onClick={() => openAction("SWAP")}>
+                Trocar
+              </button>
+              <button
+                className="button"
+                onClick={() => openAction("WITHDRAWAL")}
+              >
+                Retirar
+              </button>
             </div>
-            <p className="muted">
-              Aportes e retiradas são fluxos de caixa, não lucro. Cálculos do
-              livro virtual; custo médio inclui taxas. Avaliado em{" "}
-              {new Date(state.evaluated_at).toLocaleString("pt-BR", {
-                timeZone: "America/Sao_Paulo",
-              })}
-              .
-            </p>
+            <div className="virtual-stats">
+              <div>
+                <span>Caixa disponível</span>
+                <strong>{display(state.cash)}</strong>
+              </div>
+              <div>
+                <span>Ganho não realizado</span>
+                <strong>
+                  {display(complete ? state.unrealized_pnl : null)}
+                </strong>
+              </div>
+            </div>
+            <details>
+              <summary>Detalhes contábeis</summary>
+              <div className="virtual-stats">
+                {[
+                  ["Aportes líquidos", state.net_contributions],
+                  ["Ganho realizado", state.realized_pnl],
+                  ["Custo das posições", state.cost_basis],
+                  ["Taxas acumuladas", state.fees],
+                ].map(([label, value]) => (
+                  <div key={label}>
+                    <span>{label}</span>
+                    <strong>{display(value)}</strong>
+                  </div>
+                ))}
+              </div>
+              <p className="muted">
+                Aportes e retiradas são fluxos de caixa, não lucro. Cálculos do
+                livro virtual; custo médio inclui taxas. Avaliado em{" "}
+                {new Date(state.evaluated_at).toLocaleString("pt-BR", {
+                  timeZone: "America/Sao_Paulo",
+                })}
+                .
+              </p>
+            </details>
           </section>
           <section className="virtual-panel" id="posicoes">
             <h2>Posições atuais</h2>
@@ -180,7 +238,13 @@ export function VirtualWallet({
                         <dd>{display(position.average_cost)}</dd>
                         <dt>Custo remanescente</dt>
                         <dd>{display(position.cost_basis)}</dd>
-                        <dt>Valor atual</dt>
+                        <dt>Preço atual</dt>
+                        <dd>
+                          {fresh
+                            ? display(position.price)
+                            : "Cotação indisponível"}
+                        </dd>
+                        <dt>Valor da posição</dt>
                         <dd>
                           {fresh
                             ? display(position.market_value)
@@ -205,6 +269,31 @@ export function VirtualWallet({
                             : "Indisponível"}
                         </dd>
                       </dl>
+                      <div className="wallet-actions">
+                        <button
+                          className="button"
+                          onClick={() => openAction("SELL", position.asset_id)}
+                        >
+                          Vender {position.symbol}
+                        </button>
+                        <button
+                          className="button"
+                          onClick={() =>
+                            setSimSource({
+                              id: position.asset_id,
+                              serial: Date.now(),
+                            })
+                          }
+                        >
+                          Simular {position.symbol}
+                        </button>
+                        <button
+                          className="button"
+                          onClick={() => openAction("BUY", position.asset_id)}
+                        >
+                          Comprar {position.symbol}
+                        </button>
+                      </div>
                       <small>
                         Fonte: Kraken ·{" "}
                         {position.observed_at
@@ -230,6 +319,25 @@ export function VirtualWallet({
             hidden={hidden}
             writesPaused={writesPaused}
             operations={state.operations}
+            positions={state.positions}
+            open={open}
+            onClose={() => setOpen(false)}
+            request={request}
+            now={now}
+          />
+          <WalletSimulator
+            selection={simSource}
+            state={state}
+            market={market}
+            now={now}
+            hidden={hidden}
+            onPrepare={(values) => openAction("SWAP", undefined, values)}
+          />
+          <WalletResearchPanel
+            research={research}
+            market={market}
+            now={now}
+            hidden={hidden}
           />
           <History
             key={`${state.wallet.id}:${state.operations[0]?.id ?? "empty"}`}
@@ -238,6 +346,7 @@ export function VirtualWallet({
             market={market}
             onReverse={(entry) => {
               setReversal(entry);
+              setOpen(true);
               document
                 .getElementById("registro")
                 ?.scrollIntoView({ behavior: "smooth" });
@@ -255,42 +364,16 @@ export function VirtualWallet({
         </section>
       )}
       <section className="virtual-panel">
-        <h2>
-          {wallets.length ? "Criar outra carteira" : "Sua primeira carteira"}
-        </h2>
-        <CreateWallet initialKey={createKey} writesPaused={writesPaused} />
+        <details
+          open={creationOpen}
+          onToggle={(event) => setCreationOpen(event.currentTarget.open)}
+        >
+          <summary>
+            {wallets.length ? "Criar outra carteira" : "Sua primeira carteira"}
+          </summary>
+          <CreateWallet initialKey={createKey} writesPaused={writesPaused} />
+        </details>
       </section>
-      {market && (
-        <section className="virtual-panel">
-          <h2>Mercado de referência</h2>
-          <p>
-            Preços atuais não substituem o preço histórico que você pagou. Dados
-            ausentes não impedem um registro declarado.
-          </p>
-          <div className="virtual-market">
-            {market.assets.map((asset) => (
-              <div key={asset.id}>
-                <strong>{asset.symbol}</strong>
-                <span>
-                  {usableQuote(asset.quote, Date.parse(market.evaluated_at)) &&
-                  usableQuote(asset.quote, now)
-                    ? display(asset.quote?.price)
-                    : "Cotação indisponível"}
-                </span>
-                <small>
-                  Kraken ·{" "}
-                  {asset.quote
-                    ? new Date(asset.quote.observed_at).toLocaleString(
-                        "pt-BR",
-                        { timeZone: "America/Sao_Paulo" },
-                      )
-                    : "Sem observação"}
-                </small>
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
     </>
   );
 }
@@ -343,6 +426,11 @@ function OperationForm({
   hidden,
   writesPaused,
   operations,
+  positions,
+  open,
+  onClose,
+  request,
+  now,
 }: {
   walletId: string;
   initialKey: string;
@@ -351,6 +439,16 @@ function OperationForm({
   hidden: boolean;
   writesPaused: boolean;
   operations: Entry[];
+  positions: WalletState["positions"];
+  open: boolean;
+  onClose: () => void;
+  request: {
+    kind: string;
+    asset?: string;
+    values?: Record<string, string>;
+    serial: number;
+  } | null;
+  now: number;
 }) {
   const [kind, setKind] = useState("DEPOSIT");
   const [result, action, pending] = useActionState(recordOperationAction, {});
@@ -358,12 +456,26 @@ function OperationForm({
   const [values, setValues] = useState<Record<string, string>>({});
   const change = (name: string, value: string) =>
     setValues((previous) => ({ ...previous, [name]: value }));
+  const [seenRequest, setSeenRequest] = useState(request);
+  if (request !== seenRequest) {
+    setSeenRequest(request);
+    // An unresolved submission must retain its exact payload and idempotency key.
+    if (request && !result.error && !pending) {
+      setKind(request.kind);
+      if (request.asset || request.values)
+        setValues((previous) => ({
+          ...previous,
+          ...(request.asset ? { asset_id: request.asset } : {}),
+          ...request.values,
+        }));
+    }
+  }
   const selected = kind;
   // Changing the reversal selection is an explicit form choice, not a monetary calculation.
   const [seenReversal, setSeenReversal] = useState<Entry | null>(null);
   if (reversal !== seenReversal) {
     setSeenReversal(reversal);
-    if (reversal) {
+    if (reversal && !result.error && !pending) {
       setKind("REVERSAL");
       change("reversal_of", reversal.id);
     }
@@ -414,10 +526,28 @@ function OperationForm({
     </>
   );
   const [localDate, setLocalDate] = useState("");
+  useEffect(() => {
+    const date = new Date();
+    const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000)
+      .toISOString()
+      .slice(0, 16);
+    const timer = window.setTimeout(() => setLocalDate(local), 0);
+    return () => window.clearTimeout(timer);
+  }, []);
   const occurredAt = localInputToISO(localDate);
   return (
-    <section className="virtual-panel" id="registro">
-      <h2>Novo registro virtual</h2>
+    <section
+      className="virtual-panel wallet-drawer"
+      id="registro"
+      hidden={!open}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="registro-title"
+    >
+      <button type="button" className="toolbar-button" onClick={onClose}>
+        Fechar registro
+      </button>
+      <h2 id="registro-title">Novo registro virtual</h2>
       <p>
         Informe os valores efetivamente declarados em USDT. Taxas são
         obrigatórias: digite 0 apenas quando a taxa for zero. O servidor valida
@@ -464,7 +594,47 @@ function OperationForm({
               <>
                 {assetInput("asset_id", "Ativo")}
                 {numberInput("quantity", "Quantidade")}
+                {kind === "SELL" &&
+                  positions.find((p) => p.asset_id === values.asset_id) && (
+                    <div className="wallet-actions">
+                      {["25", "50", "100"].map((pct) => (
+                        <button
+                          type="button"
+                          className="button"
+                          key={pct}
+                          onClick={() => {
+                            const position = positions.find(
+                              (p) => p.asset_id === values.asset_id,
+                            );
+                            const quantity =
+                              position &&
+                              quantityForPercent(position.quantity, pct);
+                            if (quantity) change("quantity", quantity);
+                          }}
+                        >
+                          {pct}%
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 {numberInput("unit_price", "Preço unitário (USDT)")}
+                {(() => {
+                  const quote = market?.assets.find(
+                    (a) => a.id === values.asset_id,
+                  )?.quote;
+                  return market &&
+                    usableQuote(quote, Date.parse(market.evaluated_at)) &&
+                    usableQuote(quote, now) &&
+                    quote ? (
+                    <button
+                      type="button"
+                      className="button"
+                      onClick={() => change("unit_price", quote.price)}
+                    >
+                      Usar cotação atual
+                    </button>
+                  ) : null;
+                })()}
                 {numberInput("fees", "Taxa (USDT)")}
               </>
             )}
@@ -551,120 +721,146 @@ function History({
   const [pending, startTransition] = useTransition();
   return (
     <section className="virtual-panel" id="historico">
-      <h2>Histórico auditável</h2>
-      <p>
-        {state.operations_total} operações · Registro virtual declarado · Ordem
-        de registro; a contabilização usa data efetiva e sequência.
-      </p>
-      {[...state.operations, ...extra].length ? (
-        <ol className="virtual-history">
-          {[...state.operations, ...extra].map((entry) => (
-            <li key={entry.id}>
-              <div>
-                <strong>
-                  {names[entry.kind as keyof typeof names] ?? entry.kind}
-                </strong>
-                <small>{entry.kind}</small>
-                <span>
-                  #{entry.sequence} ·{" "}
-                  {new Date(entry.occurred_at).toLocaleString("pt-BR", {
-                    timeZone: "America/Sao_Paulo",
-                  })}
-                  {entry.reversed && " · Estornada"}
-                </span>
-              </div>
-              <details>
-                <summary>Detalhes do registro {entry.sequence}</summary>
-                <p>ID: {entry.id}</p>
-                <p>
-                  Registrado em:{" "}
-                  {new Date(entry.created_at).toLocaleString("pt-BR", {
-                    timeZone: "America/Sao_Paulo",
-                  })}
-                </p>
-                {hidden ? (
-                  <p>••••••</p>
-                ) : (
-                  <dl>
-                    {Object.entries(entry.request).map(([key, value]) => (
-                      <div key={key}>
-                        <dt>
-                          {(
-                            {
-                              kind: "Tipo",
-                              occurred_at: "Data efetiva",
-                              amount: "Valor USDT",
-                              asset_id: "Ativo",
-                              quantity: "Quantidade",
-                              unit_price: "Preço unitário USDT",
-                              fees: "Taxa USDT",
-                              sell_asset_id: "Ativo vendido",
-                              sell_quantity: "Quantidade vendida",
-                              sell_unit_price: "Preço de venda USDT",
-                              sell_fees: "Taxa de venda USDT",
-                              buy_asset_id: "Ativo comprado",
-                              buy_quantity: "Quantidade comprada",
-                              buy_unit_price: "Preço de compra USDT",
-                              buy_fees: "Taxa de compra USDT",
-                              reversal_of: "Operação estornada",
-                            } as Record<string, string>
-                          )[key] ?? key}
-                        </dt>
-                        <dd>
-                          {key.includes("asset_id")
+      <details>
+        <summary>Histórico auditável</summary>
+        <p>
+          {state.operations_total} operações · Registro virtual declarado ·
+          Ordem de registro; a contabilização usa data efetiva e sequência.
+        </p>
+        {[...state.operations, ...extra].length ? (
+          <ol className="virtual-history">
+            {[...state.operations, ...extra].map((entry) => (
+              <li key={entry.id}>
+                <div>
+                  <strong>
+                    {names[entry.kind as keyof typeof names] ?? entry.kind}
+                  </strong>
+                  <small>{entry.kind}</small>
+                  {!hidden && (
+                    <span>
+                      {Object.entries(entry.request)
+                        .filter(([key]) =>
+                          [
+                            "amount",
+                            "quantity",
+                            "sell_quantity",
+                            "buy_quantity",
+                            "asset_id",
+                            "sell_asset_id",
+                            "buy_asset_id",
+                          ].includes(key),
+                        )
+                        .map(([key, value]) =>
+                          key.includes("asset_id")
                             ? (market?.assets.find(
                                 (asset) => asset.id === value,
-                              )?.symbol ?? String(value))
-                            : key === "kind"
-                              ? (names[value as keyof typeof names] ??
-                                String(value))
-                              : String(value)}
-                        </dd>
-                      </div>
-                    ))}
-                  </dl>
+                              )?.symbol ?? "Ativo indisponível")
+                            : String(value),
+                        )
+                        .join(" · ")}
+                    </span>
+                  )}
+                  <span>
+                    #{entry.sequence} ·{" "}
+                    {new Date(entry.occurred_at).toLocaleString("pt-BR", {
+                      timeZone: "America/Sao_Paulo",
+                    })}
+                    {entry.reversed && " · Estornada"}
+                  </span>
+                </div>
+                <details>
+                  <summary>Detalhes do registro {entry.sequence}</summary>
+                  <p>ID: {entry.id}</p>
+                  <p>
+                    Registrado em:{" "}
+                    {new Date(entry.created_at).toLocaleString("pt-BR", {
+                      timeZone: "America/Sao_Paulo",
+                    })}
+                  </p>
+                  {hidden ? (
+                    <p>••••••</p>
+                  ) : (
+                    <dl>
+                      {Object.entries(entry.request).map(([key, value]) => (
+                        <div key={key}>
+                          <dt>
+                            {(
+                              {
+                                kind: "Tipo",
+                                occurred_at: "Data efetiva",
+                                amount: "Valor USDT",
+                                asset_id: "Ativo",
+                                quantity: "Quantidade",
+                                unit_price: "Preço unitário USDT",
+                                fees: "Taxa USDT",
+                                sell_asset_id: "Ativo vendido",
+                                sell_quantity: "Quantidade vendida",
+                                sell_unit_price: "Preço de venda USDT",
+                                sell_fees: "Taxa de venda USDT",
+                                buy_asset_id: "Ativo comprado",
+                                buy_quantity: "Quantidade comprada",
+                                buy_unit_price: "Preço de compra USDT",
+                                buy_fees: "Taxa de compra USDT",
+                                reversal_of: "Operação estornada",
+                              } as Record<string, string>
+                            )[key] ?? key}
+                          </dt>
+                          <dd>
+                            {key.includes("asset_id")
+                              ? (market?.assets.find(
+                                  (asset) => asset.id === value,
+                                )?.symbol ?? String(value))
+                              : key === "kind"
+                                ? (names[value as keyof typeof names] ??
+                                  String(value))
+                                : String(value)}
+                          </dd>
+                        </div>
+                      ))}
+                    </dl>
+                  )}
+                  {entry.reversal_of && <p>Estorno de: {entry.reversal_of}</p>}
+                </details>
+                {!entry.reversed && entry.kind !== "REVERSAL" && (
+                  <button
+                    className="toolbar-button"
+                    type="button"
+                    onClick={() => onReverse(entry)}
+                    aria-label={`Estornar operação ${entry.sequence}`}
+                  >
+                    Preparar estorno
+                  </button>
                 )}
-                {entry.reversal_of && <p>Estorno de: {entry.reversal_of}</p>}
-              </details>
-              {!entry.reversed && entry.kind !== "REVERSAL" && (
-                <button
-                  className="toolbar-button"
-                  type="button"
-                  onClick={() => onReverse(entry)}
-                  aria-label={`Estornar operação ${entry.sequence}`}
-                >
-                  Preparar estorno
-                </button>
-              )}
-            </li>
-          ))}
-        </ol>
-      ) : (
-        <p>Nenhuma operação registrada.</p>
-      )}
-      {error && <p role="alert">{error}</p>}
-      {before !== null && (
-        <button
-          className="button"
-          disabled={pending}
-          onClick={() =>
-            startTransition(async () => {
-              const response = await historyAction(state.wallet.id, before);
-              if (response.error) setError(response.error);
-              else if (response.history) {
-                setExtra((previous) => [
-                  ...previous,
-                  ...response.history!.operations,
-                ]);
-                setBefore(response.history.next_before);
-                setError("");
-              }
-            })
-          }
-        >
-          {pending ? "Carregando…" : "Carregar mais operações"}
-        </button>
-      )}
+              </li>
+            ))}
+          </ol>
+        ) : (
+          <p>Nenhuma operação registrada.</p>
+        )}
+        {error && <p role="alert">{error}</p>}
+        {before !== null && (
+          <button
+            className="button"
+            disabled={pending}
+            onClick={() =>
+              startTransition(async () => {
+                const response = await historyAction(state.wallet.id, before);
+                if (response.error) setError(response.error);
+                else if (response.history) {
+                  setExtra((previous) => [
+                    ...previous,
+                    ...response.history!.operations,
+                  ]);
+                  setBefore(response.history.next_before);
+                  setError("");
+                }
+              })
+            }
+          >
+            {pending ? "Carregando…" : "Carregar mais operações"}
+          </button>
+        )}
+      </details>
     </section>
   );
 }

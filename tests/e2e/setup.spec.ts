@@ -23,7 +23,8 @@ test('mobile navigation and page layout stay inside the viewport', async ({ page
   }
   await page.goto('/');
   await page.getByRole('button', { name: 'Abrir menu' }).click();
-  await page.getByRole('link', { name: 'Minha carteira', exact: true }).click();
+  await page.getByRole('link', { name: 'Configurações', exact: true }).click();
+  await page.getByRole('link', { name: 'Abrir carteira anterior' }).click();
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Minha carteira');
   await expect(page.getByRole('button', { name: 'Abrir menu' })).toHaveAttribute('aria-expanded', 'false');
   await page.goto('/');

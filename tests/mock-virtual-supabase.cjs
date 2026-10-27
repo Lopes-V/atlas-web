@@ -62,7 +62,8 @@ function historyWallet(user) {
     historyFixture: ["history", "zero-quote", "wrong-currency"].includes(
       user.mode,
     ),
-    freshFixture: user.mode === "fresh",
+    freshFixture: ["fresh", "fresh-two"].includes(user.mode),
+    freshTwo: user.mode === "fresh-two",
   };
   wallet.older = entry(
     { kind: "DEPOSIT", occurred_at: "2026-01-01T00:00:00Z", amount: "2.12345" },
@@ -79,14 +80,14 @@ function state(wallet) {
               asset_id: assets[0].id,
               symbol: assets[0].symbol,
               name: assets[0].name,
-              quantity: "1",
+              quantity: wallet.freshTwo ? "2" : "1",
               average_cost: "10",
               cost_basis: "10",
               price: partial ? null : "10",
               observed_at: partial
                 ? null
                 : new Date(Date.now() - 10000).toISOString(),
-              market_value: partial ? null : "10",
+              market_value: partial ? null : wallet.freshTwo ? "20" : "10",
               unrealized_pnl: partial ? null : "0",
               unrealized_pnl_pct: partial ? null : "0",
               concentration_pct: partial ? null : "100",
@@ -102,7 +103,7 @@ function state(wallet) {
     fees: "0",
     cost_basis: partial ? "10" : "0",
     positions,
-    market_value: partial ? null : wallet.freshFixture ? "10" : "0",
+    market_value: partial ? null : wallet.freshTwo ? "20" : wallet.freshFixture ? "10" : "0",
     known_market_value: "0",
     unrealized_pnl: partial ? null : "0",
     valuation_complete: !partial,
@@ -120,6 +121,14 @@ globalThis.fetch = async function (input, init) {
         ? input.href
         : input.url,
   );
+  if (url.hostname === "atlas-test.supabase.co" && url.pathname === "/rest/v1/assets" && url.searchParams.get("select")?.includes("candles:market_candles")) {
+    const headers = new Headers(init?.headers);
+    if (headers.get("apikey") !== "sb_secret_test_only_never_real") return Response.json({}, {status: 403});
+    const base = Math.floor(Date.now() / 900000) * 900000;
+    const candle = (offset, close) => ({observed_at: new Date(base + offset * 900000).toISOString(), close, quality: "VALID", provider: "kraken"});
+    const analysis = (interval, duration) => ({id: randomUUID(), interval, reference_at: new Date(Math.floor(Date.now() / duration) * duration - duration).toISOString(), algorithm_version: "analysis-v2", created_at: new Date(Math.floor(Date.now() / duration) * duration).toISOString(), metrics: ["CLOSE", "RETURN", "MOMENTUM_PCT", "EMA20", "EMA50", "RSI", "VOLATILITY", "ATR", "MAX_DRAWDOWN", "TREND_DIRECTION"].map(metric_name => ({metric_name, metric_value: "1", reference_period: null}))});
+    return Response.json(assets.map(a => ({id:a.id, symbol:a.symbol, name:a.name, asset_type:"CRYPTO", is_active:true, market:{code:"CRYPTO",is_active:true}, currency:{code:"USDT",is_active:true}, exchange:{code:"KRAKEN",is_active:true}, analyses15m:[analysis("15m",900000)], analyses1h:[analysis("1h",3600000)], candles:[candle(-4,"9"), candle(-2,"10"), candle(0,"11")] })));
+  }
   if (
     url.hostname !== "atlas-test.supabase.co" ||
     !(
@@ -155,7 +164,7 @@ globalThis.fetch = async function (input, init) {
       mode: body.email.split("@")[0],
     };
     if (
-      ["history", "fresh", "zero-quote", "wrong-currency"].includes(user.mode)
+      ["history", "fresh", "fresh-two", "zero-quote", "wrong-currency"].includes(user.mode)
     )
       historyWallet(user);
     return Response.json(tokens(user));
@@ -206,7 +215,7 @@ globalThis.fetch = async function (input, init) {
             : {
                 price: "10",
                 observed_at: new Date(
-                  Date.now() - (index === 2 ? -60000 : index ? 300000 : 10000),
+                  Date.now() - (index === 2 ? -60000 : index && user.mode !== "fresh" ? 300000 : 10000),
                 ).toISOString(),
                 quality: "VALID",
                 provider: "kraken",

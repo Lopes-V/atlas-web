@@ -12,10 +12,11 @@ async function create(page: Page, email?: string) {
   await login(page, email);
   await page.getByLabel("Nome da carteira").fill(`Teste ${test.info().testId}`);
   await page.getByRole("button", { name: "Criar carteira USDT" }).click();
+  await expect(page).toHaveURL(/carteira=/);
+  await page.getByRole("button", { name: "Adicionar saldo" }).click();
   await expect(
     page.getByRole("heading", { name: "Novo registro virtual" }),
   ).toBeVisible();
-  await expect(page).toHaveURL(/carteira=/);
   await page
     .getByLabel("Data e hora (seu fuso local)")
     .fill("2026-01-01T12:00");
@@ -57,16 +58,22 @@ test("wallet starts empty, records exact deposit/trades/swap and supports histor
     expect(cookie?.secure).toBe(true);
     expect(cookie?.sameSite).toBe("Lax");
   }
+  await page.getByRole("button", { name: "Fechar registro" }).click();
+  await page.locator("#historico > details > summary").click();
   await expect(page.getByText("Nenhuma operação registrada.")).toBeVisible();
+  await page.getByRole("button", { name: "Adicionar saldo" }).click();
   await page
     .getByLabel("Valor (USDT)")
     .fill("12345678901234567890.123456789012345678");
   await page.getByRole("button", { name: "Registrar operação" }).click();
   await expect(page.getByRole("status")).toContainText("confirmado");
-  await page.locator("#historico summary").first().click();
+  await page.getByRole("button", { name: "Fechar registro" }).click();
+  await page.locator("#historico > details > summary").click();
+  await page.getByText("Detalhes do registro 1", { exact: true }).click();
   await expect(page.locator("#historico")).toContainText(
     "12345678901234567890.123456789012345678",
   );
+  await page.getByRole("button", { name: "Comprar", exact: true }).click();
   for (const kind of ["BUY", "SELL"]) {
     await record(page, kind);
     await page
@@ -89,6 +96,7 @@ test("wallet starts empty, records exact deposit/trades/swap and supports histor
   }
   await page.getByRole("button", { name: "Registrar operação" }).click();
   await expect(page.locator("#historico")).toContainText("SWAP");
+  await page.getByRole("button", { name: "Fechar registro" }).click();
   await page.getByRole("button", { name: "Ocultar valores" }).click();
   await expect(page.locator("#historico")).not.toContainText(
     "12345678901234567890",
@@ -140,9 +148,11 @@ test("expired sessions renew only through same-origin POST and user B cannot sel
     },
   ]);
   await page.goto(walletUrl);
+  await page.getByRole("button", { name: "Adicionar saldo" }).click();
   await expect(
     page.getByRole("heading", { name: "Novo registro virtual" }),
   ).toBeVisible();
+  await page.getByRole("button", { name: "Fechar registro" }).click();
   const csrf = await request.post("/conta/renovar/sessao", {
     headers: { Origin: "https://evil.example" },
   });
@@ -190,6 +200,7 @@ test("partial valuation stays unavailable and history paginates manually with re
   page,
 }) => {
   await login(page, "history@example.test");
+  await page.locator("#historico > details > summary").click();
   await expect(
     page.getByText("Patrimônio incompleto", { exact: true }),
   ).toBeVisible();
@@ -227,6 +238,8 @@ test("open position expires without refresh and browser bundles never receive a 
     page.getByRole("heading", { name: "Patrimônio virtual", exact: true }),
   ).toBeVisible();
   await expect(page.locator("#posicoes")).toContainText("10,00");
+  await expect(page.locator("#posicoes")).toContainText("Preço atual");
+  await expect(page.locator("#posicoes")).toContainText("Valor da posição");
   await page.screenshot({
     path: "artifacts/atlas-virtual-positions-desktop.png",
     fullPage: true,
@@ -236,11 +249,15 @@ test("open position expires without refresh and browser bundles never receive a 
     path: "artifacts/atlas-virtual-positions-mobile.png",
     fullPage: true,
   });
+  await page.getByRole("button", { name: "Simular BTCUSDT" }).click();
+  await page
+    .getByLabel("Ativo de destino")
+    .selectOption({ label: "SOLUSDT — Solana" });
+  await expect(
+    page.getByText("Cotações Kraken atuais indisponíveis para simular."),
+  ).toBeVisible();
   await context.setOffline(true);
   await page.clock.fastForward(65000);
-  await expect(
-    page.locator(".virtual-market > div").filter({ hasText: "SOLUSDT" }),
-  ).toContainText("Cotação indisponível");
   await page.clock.fastForward(56000);
   await expect(
     page.getByRole("heading", { name: "Patrimônio incompleto", exact: true }),
@@ -273,6 +290,7 @@ test("wallet creation keeps its request key and name after a lost acknowledgemen
   await expect(
     page.getByRole("link", { name: "Retry wallet", exact: true }),
   ).toHaveCount(1);
+  await page.getByText("Criar outra carteira").click();
   await page.getByLabel("Nome da carteira").fill("Second wallet");
   await page.getByRole("button", { name: "Criar carteira USDT" }).click();
   await expect(
@@ -288,16 +306,14 @@ for (const mode of ["zero-quote", "wrong-currency"]) {
     await expect(
       page.getByRole("heading", { name: "Patrimônio incompleto", exact: true }),
     ).toBeVisible();
-    await expect(page.locator(".virtual-stats")).toContainText(
+    await expect(page.locator(".virtual-stats").first()).toContainText(
       "Caixa disponível",
     );
     await expect(page.locator("#historico")).toContainText("DEPOSIT");
     await expect(page.locator("#posicoes")).toContainText(
       "Cotação indisponível",
     );
-    await expect(
-      page.locator(".virtual-market > div").filter({ hasText: "BTCUSDT" }),
-    ).toContainText("Cotação indisponível");
+    await page.getByRole("button", { name: "Comprar", exact: true }).click();
     await page.getByLabel("Tipo de operação").selectOption("BUY");
     await page
       .getByLabel("Data e hora (seu fuso local)")
@@ -305,6 +321,9 @@ for (const mode of ["zero-quote", "wrong-currency"]) {
     await page
       .getByLabel("Ativo", { exact: true })
       .selectOption({ label: "BTCUSDT — Bitcoin" });
+    await expect(
+      page.getByRole("button", { name: "Usar cotação atual" }),
+    ).toHaveCount(0);
     await page.getByLabel("Quantidade", { exact: true }).fill("1");
     await page.getByLabel("Preço unitário (USDT)", { exact: true }).fill("10");
     await page.getByLabel("Taxa (USDT)", { exact: true }).fill("0");
@@ -327,6 +346,8 @@ test("ambiguous operation keeps its exact draft and key through a failed 30s rea
   await expect(page.locator("#registro").getByRole("alert")).toContainText(
     "mesma chave",
   );
+  await page.getByRole("button", { name: "Fechar registro" }).click();
+  await page.getByRole("button", { name: "Adicionar saldo" }).click();
   await page.clock.runFor(30001);
   await expect(
     page.getByRole("alert").filter({ hasText: "última leitura confirmada" }),
@@ -428,7 +449,7 @@ test("ambiguous write stays hidden with its original key during Auth503 and rest
     page.getByRole("alert").filter({ hasText: "verificar sua sessão" }),
   ).toBeVisible();
   await expect(page.locator("#registro")).toBeHidden();
-  await expect(page.locator(".virtual-stats")).toBeHidden();
+  await expect(page.locator(".virtual-stats").first()).toBeHidden();
   expect(await page.locator('#registro input[name="key"]').inputValue()).toBe(
     key,
   );
@@ -477,4 +498,105 @@ test("a newly verified different identity clears a hidden prior-user retry scree
   await expect(page.locator("#historico")).toHaveCount(0);
   await expect(page.locator('input[name="amount"]')).toHaveCount(0);
   await otherPage.close();
+});
+
+test("wallet actions open on demand and preserve a retry draft when closed", async ({
+  page,
+}) => {
+  await login(page, "fresh@example.test");
+  await expect(
+    page.getByRole("heading", { name: "Novo registro virtual" }),
+  ).toBeHidden();
+  await page.getByRole("button", { name: "Adicionar saldo" }).click();
+  await expect(page.getByLabel("Tipo de operação")).toHaveValue("DEPOSIT");
+  await page.getByLabel("Valor (USDT)").fill("777");
+  await page.getByRole("button", { name: "Fechar registro" }).click();
+  await page.getByRole("button", { name: "Adicionar saldo" }).click();
+  await expect(page.getByLabel("Valor (USDT)")).toHaveValue("777");
+});
+
+test("simulation requires fees, prepares an explicit swap, and expires", async ({
+  page,
+  context,
+}) => {
+  await page.clock.install();
+  await login(page, "fresh@example.test");
+  await page.getByRole("button", { name: "Simular BTCUSDT" }).click();
+  await expect(page.getByLabel("Posição de origem")).toHaveValue(
+    "00000000-0000-4000-8000-000000000201",
+  );
+  await page
+    .getByLabel("Ativo de destino")
+    .selectOption({ label: "ETHUSDT — Ethereum" });
+  await expect(
+    page.getByRole("button", { name: "Preparar troca" }),
+  ).toBeDisabled();
+  await page.getByLabel("Taxa de venda (USDT)").fill("0");
+  await page.getByLabel("Taxa de compra (USDT)").fill("0");
+  await page.getByLabel("Hipótese origem (%)").fill("10");
+  await page.getByLabel("Hipótese destino (%)").fill("5");
+  await expect(
+    page.getByRole("button", { name: "Preparar troca" }),
+  ).toBeEnabled();
+  await page.getByRole("button", { name: "Preparar troca" }).click();
+  await expect(page.getByLabel("Tipo de operação")).toHaveValue("SWAP");
+  await expect(page.getByLabel("Venda: quantidade")).toHaveValue("0.25");
+  await expect(page.getByLabel("Compra: taxa (USDT)")).toHaveValue("0");
+  await page.getByRole("button", { name: "Registrar operação" }).click();
+  await expect(page.locator("#registro").getByRole("status")).toContainText(
+    "confirmado",
+  );
+  await page.getByRole("button", { name: "Fechar registro" }).click();
+  await context.setOffline(true);
+  await page.clock.fastForward(121000);
+  await expect(
+    page.getByRole("button", { name: "Preparar troca" }),
+  ).toBeDisabled();
+});
+
+test("closed research history preserves gaps and hides values", async ({
+  page,
+}) => {
+  await login(page, "fresh@example.test");
+  await page.getByText("Contexto de mercado", { exact: true }).click();
+  await expect(page.getByText("Intervalos alinhados").first()).toBeVisible();
+  await page.getByText("Histórico de preços fechados · Kraken").first().click();
+  await expect(page.getByText("Intervalo sem dados ·").first()).toBeVisible();
+  await expect(
+    page.locator(".candle-history").first().locator("li"),
+  ).toHaveCount(2);
+  await page.getByRole("button", { name: "Ocultar valores" }).click();
+  await expect(page.locator(".candle-history")).toHaveCount(0);
+});
+
+test("selling a selected holding offers exact fractions and current quote", async ({
+  page,
+}) => {
+  await login(page, "fresh@example.test");
+  await page.getByRole("button", { name: "Vender BTCUSDT" }).click();
+  await expect(page.getByLabel("Ativo", { exact: true })).toHaveValue(
+    "00000000-0000-4000-8000-000000000201",
+  );
+  await page.getByRole("button", { name: "25%", exact: true }).click();
+  await expect(page.getByLabel("Quantidade", { exact: true })).toHaveValue(
+    "0.25",
+  );
+  await page.getByRole("button", { name: "100%", exact: true }).click();
+  await expect(page.getByLabel("Quantidade", { exact: true })).toHaveValue("1");
+  await page.getByRole("button", { name: "Usar cotação atual" }).click();
+  await expect(page.getByLabel("Preço unitário (USDT)")).toHaveValue("10");
+});
+
+test("position distinguishes unit quote from total value", async ({ page }) => {
+  await login(page, "fresh-two@example.test");
+  const position = page.locator("#posicoes");
+  await expect(
+    position.locator("dt").filter({ hasText: "Preço atual" }).locator("+ dd"),
+  ).toHaveText("10,00 USDT");
+  await expect(
+    position
+      .locator("dt")
+      .filter({ hasText: "Valor da posição" })
+      .locator("+ dd"),
+  ).toHaveText("20,00 USDT");
 });
