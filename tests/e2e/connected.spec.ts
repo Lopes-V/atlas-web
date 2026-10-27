@@ -201,17 +201,48 @@ test('regression: stale quote suppresses a fresh persisted crypto trend', async 
   await expect(eth).not.toContainText('ALTA');
 });
 
-test('regression: open crypto page expires quotes and trends without refresh', async ({ page }) => {
+test('regression: open crypto page expires quotes and trends without refresh', async ({ page, context }) => {
   await page.clock.install();
   await signIn(page);
   await page.goto('/cripto');
   const btc = page.getByRole('article', { name: 'BTCUSDT' });
   await expect(btc).toContainText('68.001,50 USDT');
   await expect(btc.getByRole('region', { name: '15m' })).toContainText('ALTA');
+  await context.setOffline(true);
   await page.clock.fastForward(121_000);
   await expect(btc).toContainText('Cotação indisponível');
   await expect(btc.getByText('Aguardando análise válida', { exact: true })).toHaveCount(2);
   await expect(btc).not.toContainText('ALTA');
   await expect(btc).not.toContainText('BAIXA');
   await expect(page.getByRole('article', { name: 'SOLUSDT' })).toContainText('Cotação indisponível');
+});
+
+
+test('refreshes connected markets every 30 seconds, preserves filters/privacy and pauses offline', async ({ page, context }) => {
+  await page.clock.install();
+  await signIn(page);
+  await page.goto('/mercados?q=Petrobras');
+  await page.getByRole('button', { name: 'Ocultar valores' }).click();
+  let refreshes = 0;
+  page.on('request', request => {
+    const url = new URL(request.url());
+    if (url.pathname === '/mercados' && url.searchParams.get('q') === 'Petrobras' && !url.searchParams.has('ativo') && request.headers()['rsc'] === '1' && request.headers()['next-router-prefetch'] !== '1') refreshes++;
+  });
+  await page.clock.runFor(30_001);
+  await expect.poll(() => refreshes).toBe(1);
+  await expect(page.getByLabel('Buscar ativos', { exact: true })).toHaveValue('Petrobras');
+  await expect(page.getByRole('button', { name: 'Exibir valores' })).toBeVisible();
+  await expect(page.locator('tbody tr')).toHaveCount(1);
+  await expect(page.getByRole('button', { name: 'Atualizar', exact: true })).toBeEnabled();
+  await page.evaluate(() => Object.defineProperty(document, 'hidden', { configurable: true, value: true }));
+  await page.clock.runFor(30_001);
+  expect(refreshes).toBe(1);
+  await page.evaluate(() => Object.defineProperty(document, 'hidden', { configurable: true, value: false }));
+  await context.setOffline(true);
+  await page.clock.runFor(60_000);
+  expect(refreshes).toBe(1);
+  await context.setOffline(false);
+  await page.clock.runFor(30_001);
+  await expect.poll(() => refreshes).toBeGreaterThan(1);
+  await expect(page.getByLabel('Buscar ativos', { exact: true })).toHaveValue('Petrobras');
 });
