@@ -1,0 +1,63 @@
+"use server";
+import { randomUUID } from "node:crypto";
+import { revalidatePath } from "next/cache";
+import { requireVirtualSession, safeError } from "@/lib/virtual-auth";
+import {
+  applyOperation,
+  createWallet,
+  walletHistory,
+  walletState,
+} from "@/lib/virtual-api";
+export type MutationResult = {
+  error?: string;
+  success?: string;
+  walletId?: string;
+  key?: string;
+};
+export async function createWalletAction(
+  _previous: MutationResult,
+  form: FormData,
+): Promise<MutationResult> {
+  try {
+    const { token } = await requireVirtualSession();
+    const walletId = await createWallet(
+      token,
+      String(form.get("name") ?? ""),
+      String(form.get("key") ?? ""),
+    );
+    await walletState(token, walletId);
+    revalidatePath("/virtual");
+    return { walletId, success: "Carteira criada.", key: randomUUID() };
+  } catch (error) {
+    return { error: safeError(error), key: String(form.get("key") ?? "") };
+  }
+}
+export async function recordOperationAction(
+  _previous: MutationResult,
+  form: FormData,
+): Promise<MutationResult> {
+  try {
+    const { token } = await requireVirtualSession();
+    const fields = Object.fromEntries(
+      [...form.entries()].filter(([name]) => !name.startsWith("$ACTION_")),
+    );
+    const { key, walletId, ...request } = fields;
+    await applyOperation(token, String(walletId), request, String(key));
+    await walletState(token, String(walletId));
+    revalidatePath("/virtual");
+    return {
+      success: "Registro confirmado no livro virtual.",
+      key: randomUUID(),
+    };
+  } catch (error) {
+    return { error: safeError(error), key: String(form.get("key") ?? "") };
+  }
+}
+export async function historyAction(walletId: string, before: number) {
+  try {
+    const { token } = await requireVirtualSession();
+    return { history: await walletHistory(token, walletId, before) };
+  } catch (error) {
+    return { error: safeError(error) };
+  }
+}

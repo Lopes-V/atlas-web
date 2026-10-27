@@ -21,6 +21,7 @@ const nav: { href: string; label: string; icon: LucideIcon; group?: string }[] =
   { href: '/cripto', label: 'Cripto', icon: ChartNoAxesCombined },
   { href: '/mercados', label: 'Mercados', icon: Globe2 },
   { href: '/carteira', label: 'Minha carteira', icon: Wallet },
+  { href: '/virtual', label: 'Carteira virtual', icon: Wallet },
   { href: '/oportunidades', label: 'Oportunidades', icon: Telescope },
   { href: '/renda-fixa', label: 'Renda fixa', icon: Layers },
   { href: '/alertas', label: 'Alertas', icon: Bell, group: 'Acompanhamento' },
