@@ -34,8 +34,8 @@ export async function getDashboard(): Promise<DashboardData> {
   const [crypto, assets, portfolios, opportunities, alerts, jobs, fixedIncome, fixedSnapshots] = await Promise.all([
     query('assets', {
       select: 'id,symbol,name,asset_type,market:markets(code,name,country_code),currency:currencies(code),exchange:exchanges!inner(code),quotes:market_quotes(price::text,provider,currency_code,observed_at,quality),analyses15m:analyses(id,interval,reference_at,algorithm_version,created_at,metrics:analysis_metrics(metric_name,metric_value::text,reference_period)),analyses1h:analyses(id,interval,reference_at,algorithm_version,created_at,metrics:analysis_metrics(metric_name,metric_value::text,reference_period))',
-      is_active: 'eq.true', asset_type: 'eq.CRYPTO', 'exchange.code': 'eq.BYBIT', symbol: 'in.(BTCUSDT,ETHUSDT,SOLUSDT)', order: 'symbol.asc',
-      'quotes.provider': 'eq.bybit', 'quotes.order': 'observed_at.desc', 'quotes.limit': '1',
+      is_active: 'eq.true', asset_type: 'eq.CRYPTO', 'exchange.code': 'eq.KRAKEN', symbol: 'in.(BTCUSDT,ETHUSDT,SOLUSDT)', order: 'symbol.asc',
+      'quotes.provider': 'eq.kraken', 'quotes.order': 'observed_at.desc', 'quotes.limit': '1',
       'analyses15m.algorithm_version': 'eq.analysis-v2', 'analyses15m.interval': 'eq.15m', 'analyses15m.order': 'reference_at.desc', 'analyses15m.limit': '1',
       'analyses1h.algorithm_version': 'eq.analysis-v2', 'analyses1h.interval': 'eq.1h', 'analyses1h.order': 'reference_at.desc', 'analyses1h.limit': '1',
     }, cryptoAssetSchema),

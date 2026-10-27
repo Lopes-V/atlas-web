@@ -46,7 +46,7 @@ O Atlas faz somente leituras. Operações, coletas, análises, alertas, polític
 
 - Visão geral com patrimônio da carteira selecionada, histórico, ativos e radar de sinais.
 - Mercados com busca, filtros de mercado/tipo, ordenação por ativo ou empresa, paginação de 10/25/50 registros, favoritos, qualidade e horário de cada cotação, exportação CSV e detalhe com fechamentos diários de uma única fonte.
-- Cripto em `/cripto`, com os pares spot BTCUSDT, ETHUSDT e SOLUSDT da Bybit, cotações em USDT e análises `analysis-v2` independentes de 15m/1h.
+- Cripto em `/cripto`, com os pares spot BTCUSDT, ETHUSDT e SOLUSDT da Kraken, cotações em USDT e análises `analysis-v2` independentes de 15m/1h.
 - Carteiras com seleção individual, moeda base, snapshots, resultado não realizado e até 30 movimentações recentes.
 - Oportunidades com score persistido, política, evidências e interpretação/risco de IA quando associados ao registro.
 - Alertas com filtro de status; renda fixa com referências de preço/taxa; monitoramento de execuções.
@@ -56,9 +56,9 @@ Não há cotações inventadas, conversão de moedas ou soma de carteiras. Preç
 
 ## Radar cripto
 
-Cripto fica fora da consulta geral de Mercados e da faixa de cotações, cujas regras são voltadas aos demais ativos. A seção Cripto lê o catálogo Bybit e os indicadores já persistidos pelo backend, somente no servidor autenticado. Não chama a Bybit nem recalcula indicadores técnicos no navegador. Cada intervalo busca seu último registro por `reference_at` com um limite independente, para que atualizações frequentes de 15m não ocultem a análise de 1h.
+Cripto fica fora da consulta geral de Mercados e da faixa de cotações, cujas regras são voltadas aos demais ativos. A seção Cripto lê o catálogo Kraken e os indicadores já persistidos pelo backend, somente no servidor autenticado. Não chama a Kraken nem recalcula indicadores técnicos no navegador. Cada intervalo busca seu último registro por `reference_at` com um limite independente, para que atualizações frequentes de 15m não ocultem a análise de 1h.
 
-Uma cotação precisa ter qualidade `VALID`, fonte `bybit`, moeda USDT, preço positivo e idade de até 120 segundos; horários futuros são recusados. A análise precisa usar `analysis-v2`, conter os indicadores essenciais, referenciar um candle já fechado e ter início com idade de até `2 × intervalo + 120 segundos`. Registros calculados no futuro ou antes do fechamento também ficam indisponíveis. Uma cotação indisponível também oculta os indicadores daquele par, mesmo quando a análise persistida é recente. O frontend apenas traduz `TREND_DIRECTION` em ALTA/BAIXA/MISTA e formata os números, inclusive razões como percentuais. Volume ausente aparece como `—`.
+Uma cotação precisa ter qualidade `VALID`, fonte `kraken`, moeda USDT, preço positivo e idade de até 120 segundos; horários futuros são recusados. A análise precisa usar `analysis-v2`, conter os indicadores essenciais, referenciar um candle já fechado e ter início com idade de até `2 × intervalo + 120 segundos`. Registros calculados no futuro ou antes do fechamento também ficam indisponíveis. Uma cotação indisponível também oculta os indicadores daquele par, mesmo quando a análise persistida é recente. O frontend apenas traduz `TREND_DIRECTION` em ALTA/BAIXA/MISTA e formata os números, inclusive razões como percentuais. Volume ausente aparece como `—`.
 
 A ocultação de valores cobre cotação, fechamento, EMAs, ATR e quantidades de volume. Custos e spread aparecem como indisponíveis porque não têm persistência nesta entrega. Os horários exibidos são de Brasília; a leitura reflete a última atualização do painel. Um relógio a cada 15 segundos reavalia a validade usando o horário do servidor mais o tempo monotônico decorrido no navegador, retirando cotações e tendências vencidas sem precisar atualizar a página. Dados que chegaram com horários futuros continuam indisponíveis até uma nova consulta. A seção não oferece ordens, promessa de retorno ou recomendação de compra. O coletor e sua recorrência são publicados e verificados separadamente do frontend.
 
@@ -119,3 +119,5 @@ Para publicar pelo agente, a sessão precisa de autenticação Vercel (token `VE
 Após o deploy, valide na URL retornada pela Vercel: redirecionamento sem sessão para login, login com cookie Secure, consulta real dos ativos e ausência de erros nas seções. A validação local não comprova publicação.
 
 URL de produção publicada: https://atlas-web-azure-two.vercel.app . Use a senha pessoal `ATLAS_ACCESS_PASSWORD` configurada no servidor; a cópia local fica em `.env.local` ignorado pelo Git. O deployment foi confirmado como READY na Vercel. O login e a consulta autenticada de ativos reais foram validados por HTTPS em produção após a atualização da senha pessoal.
+
+Fonte cripto ativa: Kraken spot (USDT), validada por teste público no GitHub. BTCUSDT corresponde ao símbolo XBTUSDT da API. A coleta rejeita negócios com mais de 120 segundos; SOLUSDT pode ficar indisponível por baixa frequência de negócios. Dados antigos de outras exchanges não são reutilizados nem apresentados como Kraken. A execução recorrente exige o workflow atualizado na branch padrão do backend.
