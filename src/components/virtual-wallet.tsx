@@ -472,16 +472,7 @@ function OperationForm({
   const [prepared, setPrepared] = useState<PreparedQuotes | null>(null);
   const [localDate, setLocalDate] = useState("");
   const [values, setValues] = useState<Record<string, string>>({});
-  const [seenResult, setSeenResult] = useState(result);
-  if (result !== seenResult) {
-    setSeenResult(result);
-    if (result.success) {
-      setValues({});
-      setPrepared(null);
-      setLocalDate(localNow());
-      setQueued(null);
-    }
-  }
+  const [dirty, setDirty] = useState(false);
   const change = (name: string, value: string) => {
     if (
       !locked &&
@@ -494,33 +485,40 @@ function OperationForm({
           "buy_unit_price",
         ].includes(name)
       )
-    )
+    ) {
+      setDirty(true);
       setValues((previous) => ({ ...previous, [name]: value }));
+    }
+  };
+  const startDraft = (next: DraftRequest, replace: boolean) => {
+    if (active && result.success) setStableKey(result.key ?? stableKey);
+    else if (replace) setStableKey(crypto.randomUUID());
+    if (active && (result.success || result.error)) setDismissed(result);
+    setKind(next.kind);
+    setValues({
+      ...(next.asset ? { asset_id: next.asset } : {}),
+      ...next.values,
+    });
+    setPrepared(next.quotes ?? null);
+    setDirty(!!next.values || !!next.asset);
+    setLocalDate(localNow());
+    setQueued(null);
   };
   const [seenRequest, setSeenRequest] = useState(request);
   if (request !== seenRequest) {
     setSeenRequest(request);
     if (request && (pending || (active && result.error))) setQueued(request);
     else if (request) {
-      const freshDraft =
-        !!(active && result.success) ||
-        request.kind !== kind ||
-        !!request.asset ||
-        !!request.values;
-      if (freshDraft) {
-        if (active && result.success) {
-          setStableKey(result.key ?? stableKey);
-          setDismissed(result);
-        }
+      const same =
+        request.kind === kind &&
+        (!request.asset || request.asset === values.asset_id) &&
+        !request.values;
+      if (active && result.success) startDraft(request, false);
+      else if (same) {
         setQueued(null);
-        setKind(request.kind);
-        setValues({
-          ...(request.asset ? { asset_id: request.asset } : {}),
-          ...request.values,
-        });
-        setPrepared(request.quotes ?? null);
-        setLocalDate(localNow());
-      } else if (!localDate) setLocalDate(localNow());
+        if (!localDate) setLocalDate(localNow());
+      } else if (dirty) setQueued(request);
+      else startDraft(request, false);
     }
   }
   const selected = kind;
@@ -597,7 +595,23 @@ function OperationForm({
         obrigatórias: digite 0 apenas quando a taxa for zero. O servidor valida
         todo o histórico, inclusive operações retroativas.
       </p>
-      <form action={action} className="virtual-form">
+      {active && result.success && (
+        <div>
+          <p role="status">{result.success}</p>
+          <button
+            type="button"
+            className="button primary"
+            onClick={() => startDraft({ kind, serial: Date.now() }, false)}
+          >
+            Novo registro
+          </button>
+        </div>
+      )}
+      <form
+        action={action}
+        className="virtual-form"
+        hidden={!!(active && result.success)}
+      >
         <fieldset className="virtual-draft" disabled={writesPaused}>
           <input
             name="key"
@@ -613,10 +627,12 @@ function OperationForm({
                 value={selected}
                 onChange={(event) => {
                   if (!locked && !(active && result.error)) {
-                    setKind(event.target.value);
-                    setValues({});
-                    setLocalDate(localNow());
-                    setPrepared(null);
+                    const next = {
+                      kind: event.target.value,
+                      serial: Date.now(),
+                    };
+                    if (dirty) setQueued(next);
+                    else startDraft(next, false);
                   }
                 }}
               >
@@ -635,7 +651,10 @@ function OperationForm({
                 required
                 readOnly={!!locked}
                 onChange={(event) => {
-                  if (!locked) setLocalDate(event.target.value);
+                  if (!locked) {
+                    setDirty(true);
+                    setLocalDate(event.target.value);
+                  }
                 }}
               />
               <input name="occurred_at" type="hidden" value={occurredAt} />
@@ -746,33 +765,34 @@ function OperationForm({
               </label>
             )}
           </div>
-          {active &&
-            result.error &&
-            queued &&
-            (uncertain ? (
+          {queued &&
+            (uncertain || pending ? (
               <p role="status">
                 Resolva o envio anterior antes de iniciar outra operação. A
                 chave e os dados originais foram preservados.
               </p>
             ) : (
-              <button
-                type="button"
-                className="button"
-                onClick={() => {
-                  setDismissed(result);
-                  setStableKey(crypto.randomUUID());
-                  setKind(queued.kind);
-                  setValues({
-                    ...(queued.asset ? { asset_id: queued.asset } : {}),
-                    ...queued.values,
-                  });
-                  setPrepared(queued.quotes ?? null);
-                  setLocalDate(localNow());
-                  setQueued(null);
-                }}
-              >
-                Iniciar novo rascunho
-              </button>
+              <div>
+                <p>
+                  Há um rascunho em andamento. Confirme se deseja substituí-lo.
+                </p>
+                <button
+                  type="button"
+                  className="button"
+                  onClick={() => startDraft(queued, true)}
+                >
+                  {active && result.error
+                    ? "Iniciar novo rascunho"
+                    : "Substituir rascunho"}
+                </button>
+                <button
+                  type="button"
+                  className="toolbar-button"
+                  onClick={() => setQueued(null)}
+                >
+                  Continuar rascunho
+                </button>
+              </div>
             ))}
           {prepared && (
             <p>
@@ -807,7 +827,6 @@ function OperationForm({
               {result.error}
             </p>
           )}
-          {active && result.success && <p role="status">{result.success}</p>}
           <button
             className="button primary"
             disabled={pending || writesPaused || (!preparedFresh && !uncertain)}

@@ -121,3 +121,5 @@
   .virtual-position dt:nth-of-type(6) { grid-area: 3 / 3; }
   .virtual-position dd:nth-of-type(6) { grid-area: 4 / 3; }
 }
+
+.virtual-form[hidden] { display: none; }

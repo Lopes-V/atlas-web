@@ -22,6 +22,8 @@ async function create(page: Page, email?: string) {
     .fill("2026-01-01T12:00");
 }
 async function record(page: Page, kind: string) {
+  const next = page.getByRole("button", { name: "Novo registro", exact: true });
+  if (await next.isVisible()) await next.click();
   await page.getByLabel("Tipo de operação").selectOption(kind);
 }
 test("individual account is separate from shared administrator and signup honestly awaits email confirmation", async ({
@@ -741,9 +743,90 @@ test("changing operation type clears prepared swap prices", async ({
   await page.getByLabel("Taxa de compra (USDT)").fill("0");
   await page.getByRole("button", { name: "Preparar troca" }).click();
   await page.getByLabel("Tipo de operação").selectOption("BUY");
+  await page.getByRole("button", { name: "Substituir rascunho" }).click();
   await page.getByLabel("Tipo de operação").selectOption("SWAP");
   await expect(page.getByLabel("Venda: preço unitário (USDT)")).toHaveValue("");
   await expect(page.getByLabel("Compra: preço unitário (USDT)")).toHaveValue(
     "",
   );
+});
+
+test("an open confirmed drawer starts the next draft with current time only on request", async ({
+  page,
+  context,
+}) => {
+  await page.clock.install();
+  await create(page);
+  await page.getByLabel("Valor (USDT)").fill("1");
+  await page.getByRole("button", { name: "Registrar operação" }).click();
+  await expect(page.locator("#registro").getByRole("status")).toContainText(
+    "confirmado",
+  );
+  await expect(page.getByLabel("Valor (USDT)")).toBeHidden();
+  await context.setOffline(true);
+  await page.clock.fastForward(7200000);
+  await page
+    .getByRole("button", { name: "Novo registro", exact: true })
+    .click();
+  const expected = await page.evaluate(() => {
+    const d = new Date();
+    return new Date(d.getTime() - d.getTimezoneOffset() * 60000)
+      .toISOString()
+      .slice(0, 16);
+  });
+  await expect(page.getByLabel("Data e hora (seu fuso local)")).toHaveValue(
+    expected,
+  );
+});
+
+for (const kind of ["Comprar", "Vender"]) {
+  test(`${kind} selected asset retains unsent draft after closing`, async ({
+    page,
+  }) => {
+    await login(page, "fresh@example.test");
+    await page.getByRole("button", { name: `${kind} BTCUSDT` }).click();
+    await page
+      .getByLabel("Data e hora (seu fuso local)")
+      .fill("2026-01-01T12:00");
+    await page.getByLabel("Quantidade", { exact: true }).fill("0.25");
+    await page.getByLabel("Preço unitário (USDT)").fill("11");
+    await page.getByLabel("Taxa (USDT)", { exact: true }).fill("0.1");
+    const key = await page.locator('#registro input[name="key"]').inputValue();
+    await page.getByRole("button", { name: "Fechar registro" }).click();
+    await page.getByRole("button", { name: `${kind} BTCUSDT` }).click();
+    await expect(page.getByLabel("Data e hora (seu fuso local)")).toHaveValue(
+      "2026-01-01T12:00",
+    );
+    await expect(page.getByLabel("Quantidade", { exact: true })).toHaveValue(
+      "0.25",
+    );
+    await expect(page.getByLabel("Preço unitário (USDT)")).toHaveValue("11");
+    await expect(page.getByLabel("Taxa (USDT)", { exact: true })).toHaveValue(
+      "0.1",
+    );
+    expect(await page.locator('#registro input[name="key"]').inputValue()).toBe(
+      key,
+    );
+  });
+}
+
+test("a different action requires explicit replacement of an unsent draft", async ({
+  page,
+}) => {
+  await login(page, "fresh@example.test");
+  await page.getByRole("button", { name: "Vender BTCUSDT" }).click();
+  await page.getByLabel("Quantidade", { exact: true }).fill("0.5");
+  const key = await page.locator('#registro input[name="key"]').inputValue();
+  await page.getByRole("button", { name: "Fechar registro" }).click();
+  await page.getByRole("button", { name: "Comprar BTCUSDT" }).click();
+  await expect(page.getByLabel("Tipo de operação")).toHaveValue("SELL");
+  await expect(page.getByLabel("Quantidade", { exact: true })).toHaveValue(
+    "0.5",
+  );
+  expect(await page.locator('#registro input[name="key"]').inputValue()).toBe(
+    key,
+  );
+  await page.getByRole("button", { name: "Substituir rascunho" }).click();
+  await expect(page.getByLabel("Tipo de operação")).toHaveValue("BUY");
+  await expect(page.getByLabel("Quantidade", { exact: true })).toHaveValue("");
 });
