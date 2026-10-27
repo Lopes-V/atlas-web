@@ -30,3 +30,65 @@
 .crypto-note{margin-bottom:24px}.crypto-note p{max-width:920px}.crypto-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:20px;align-items:start}.crypto-card{min-width:0;overflow:hidden}.crypto-card-heading{padding:24px;display:flex;justify-content:space-between;gap:12px;border-bottom:1px solid var(--line)}.crypto-card-heading h2{font-size:22px;margin:10px 0 6px;letter-spacing:-.5px}.crypto-card-heading p{font-size:11px}.crypto-card-heading>svg{color:var(--primary)}.crypto-price{display:flex;flex-direction:column;gap:10px;padding:24px;background:var(--mint)}.crypto-price strong{font-size:21px;overflow-wrap:anywhere;color:var(--forest)}.crypto-price span,.crypto-price small{font-size:9px;line-height:1.8;color:var(--muted)}.crypto-interval{padding:22px 24px;border-top:1px solid var(--line)}.crypto-interval-heading{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:14px}.crypto-interval-heading h3{font-size:17px}.crypto-reference{font-size:9px;line-height:1.9;color:var(--muted)}.crypto-metrics{margin:16px 0}.crypto-metrics>div{display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px solid var(--line);font-size:10px}.crypto-metrics dt{color:var(--muted);min-width:0}.crypto-metrics dd{font-weight:600;text-align:right;overflow-wrap:anywhere;min-width:0}.crypto-unavailable{display:flex;align-items:center;gap:8px;color:var(--muted);font-size:11px;line-height:1.8;min-height:70px}
 @media(max-width:1200px){.crypto-grid{grid-template-columns:1fr}.crypto-card-heading,.crypto-price,.crypto-interval{padding:22px}.crypto-metrics{display:grid;grid-template-columns:1fr 1fr;column-gap:28px}.crypto-metrics>div{font-size:11px}}
 @media(max-width:560px){.crypto-grid{gap:0}.crypto-card-heading,.crypto-price,.crypto-interval{padding:20px 17px}.crypto-metrics{grid-template-columns:1fr}.crypto-price strong{font-size:24px}.crypto-metrics>div{font-size:11px}.crypto-reference{font-size:10px}.crypto-note{margin-bottom:18px}.crypto-card-heading p{font-size:11px}}
+
+/* Individual virtual-wallet area: deliberately independent of the operator shell. */
+.virtual-shell { min-height: 100vh; background: #f7f7f7; }
+.virtual-header { display: flex; justify-content: space-between; align-items: center; gap: 24px; background: #fff; border-bottom: 1px solid #d8d9da; padding: 22px max(24px, calc((100% - 1200px) / 2)); }
+.virtual-wordmark { font-size: 24px; font-weight: 700; color: #008254; text-decoration: none; }
+.virtual-wordmark span { color: #64666a; font-size: 14px; font-weight: 400; }
+.virtual-header > div, .virtual-toolbar, .virtual-toolbar > div { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
+.virtual-header > div > span { font-size: 12px; overflow-wrap: anywhere; }
+.virtual-main { max-width: 1200px; margin: auto; padding: 32px 24px; }
+.virtual-hero { padding: 40px; margin-bottom: 24px; background: linear-gradient(120deg, #006642, #00482f); color: #fff; border-radius: 8px; }
+.virtual-hero h1 { color: #fff; margin: 8px 0 16px; font-size: 36px; }
+.virtual-hero p { margin: 12px 0; }
+.virtual-hero .eyebrow { color: #e8fdac; }
+.virtual-panel { padding: 28px; background: #fff; border: 1px solid #d8d9da; border-radius: 8px; margin: 24px 0; min-width: 0; }
+.virtual-panel h2 { font-size: 22px; margin: 0 0 16px; }
+.virtual-panel p { line-height: 1.65; }
+.virtual-panel small, .virtual-footer { font-size: 12px; color: #64666a; line-height: 1.6; }
+.virtual-total { font-size: clamp(24px, 4vw, 36px); font-weight: 700; color: #006642; overflow-wrap: anywhere; }
+.virtual-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px; margin: 28px 0; }
+.virtual-stats > div { display: flex; flex-direction: column; gap: 8px; border-top: 1px solid #ebebec; padding-top: 16px; }
+.virtual-stats span { font-size: 13px; color: #64666a; }
+.virtual-stats strong { overflow-wrap: anywhere; font-size: 19px; }
+.virtual-form { display: grid; gap: 20px; max-width: 900px; }
+.virtual-form label { display: flex; flex-direction: column; gap: 8px; font-size: 14px; font-weight: 600; min-width: 0; }
+.virtual-form input, .virtual-form select { width: 100%; min-width: 0; padding: 12px; border: 1px solid #d8d9da; background: #fff; border-radius: 2px; color: #000; font: inherit; }
+.virtual-form .button { justify-self: start; min-height: 44px; }
+.virtual-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
+.virtual-position-grid, .virtual-market { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.virtual-position { padding: 20px; background: #effcf8; border: 1px solid #e3faf2; border-radius: 8px; }
+.virtual-position h3 { font-size: 18px; margin: 0; }
+.virtual-position dl { display: grid; grid-template-columns: 1fr; gap: 4px; }
+.virtual-position dt { color: #64666a; font-size: 12px; margin-top: 8px; }
+.virtual-position dd { margin: 0; font-size: 14px; overflow-wrap: anywhere; }
+.virtual-market > div { padding: 16px; background: #effcf8; display: grid; gap: 8px; overflow-wrap: anywhere; }
+.virtual-wallet-links a { padding: 8px 12px; color: #006642; border-bottom: 2px solid transparent; }
+.virtual-wallet-links a[aria-current=page] { border-color: #008254; font-weight: 700; }
+.virtual-history { list-style: none; padding: 0; }
+.virtual-history li { border-top: 1px solid #ebebec; padding: 20px 0; overflow-wrap: anywhere; }
+.virtual-history li > div { display: flex; flex-wrap: wrap; gap: 16px; margin-bottom: 12px; }
+.virtual-history details { font-size: 13px; }
+.virtual-history summary { cursor: pointer; color: #006642; padding: 8px 0; }
+.virtual-history dl > div { display: grid; grid-template-columns: 1fr 2fr; gap: 12px; border-bottom: 1px solid #ebebec; padding: 6px 0; }
+.virtual-history dd { margin: 0; overflow-wrap: anywhere; }
+.virtual-account { width: min(100% - 32px, 540px); margin: 64px auto; }
+.virtual-account h1 { font-size: 30px; margin: 16px 0; }
+.virtual-tabs { display: flex; gap: 8px; margin: 24px 0; }
+.virtual-tabs button { border: 1px solid #d8d9da; padding: 12px; background: #fff; border-radius: 2px; cursor: pointer; }
+.virtual-tabs button[aria-pressed=true] { background: #e3faf2; color: #006642; border-color: #008254; }
+.virtual-footer { padding: 24px 0; }
+@media (max-width: 700px) {
+  .virtual-main { padding: 20px 16px; }
+  .virtual-header { padding: 18px 16px; flex-wrap: wrap; }
+  .virtual-header > div { justify-content: space-between; width: 100%; }
+  .virtual-hero, .virtual-panel { padding: 22px; }
+  .virtual-hero h1 { font-size: 30px; }
+  .virtual-fields, .virtual-position-grid, .virtual-market { grid-template-columns: 1fr; }
+  .virtual-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+  .virtual-stats strong { font-size: 16px; }
+  .virtual-toolbar > div { gap: 8px; }
+}
+.virtual-hero small { color: #e3faf2; }
+.virtual-draft { border: 0; padding: 0; margin: 0; min-width: 0; display: grid; gap: 20px; }
