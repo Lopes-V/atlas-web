@@ -9,9 +9,10 @@ import {
   safeError,
   virtualConfig,
   virtualSession,
+  VirtualError,
 } from "@/lib/virtual-auth";
 import { walletList, walletMarket, walletState } from "@/lib/virtual-api";
-import { VirtualWallet } from "@/components/virtual-wallet";
+import { VirtualWalletScreen } from "@/components/virtual-wallet-screen";
 import type { Market, Wallet, WalletState } from "@/lib/virtual-contracts";
 export const dynamic = "force-dynamic";
 export default async function VirtualPage({
@@ -20,12 +21,14 @@ export default async function VirtualPage({
   searchParams: Promise<Record<string, string | undefined>>;
 }) {
   let session,
-    error = "";
+    error = "",
+    retryable = false;
   try {
     virtualConfig();
     session = await virtualSession();
   } catch (cause) {
     error = safeError(cause);
+    retryable = cause instanceof VirtualError && cause.code === "unavailable";
   }
   const selected = (await searchParams).carteira;
   if (!session && !error) {
@@ -55,6 +58,7 @@ export default async function VirtualPage({
       }
     } catch (cause) {
       error = safeError(cause);
+      retryable = cause instanceof VirtualError && cause.code === "unavailable";
     }
   }
   return (
@@ -86,20 +90,23 @@ export default async function VirtualPage({
             ou BRL.
           </small>
         </div>
-        {error ? (
-          <section className="virtual-panel">
-            <p role="alert">{error}</p>
-            <Link href="/virtual">Recarregar carteiras</Link>
-          </section>
-        ) : (
-          <VirtualWallet
-            wallets={wallets}
-            state={state}
-            market={market}
-            createKey={randomUUID()}
-            operationKey={randomUUID()}
-          />
-        )}
+        <VirtualWalletScreen
+          key={selected ?? "default"}
+          identity={session?.user.id ?? null}
+          snapshot={
+            error
+              ? null
+              : {
+                  wallets,
+                  state,
+                  market,
+                  createKey: randomUUID(),
+                  operationKey: randomUUID(),
+                }
+          }
+          error={error}
+          retryable={retryable}
+        />
         <footer className="virtual-footer">
           Atlas · Dados privados da conta individual. Horários de Brasília.
           Cotações Kraken válidas por até 120 segundos. Atualização de leitura a

@@ -35,12 +35,14 @@ export function VirtualWallet({
   market,
   createKey,
   operationKey,
+  writesPaused = false,
 }: {
   wallets: Wallet[];
   state: WalletState | null;
   market: Market | null;
   createKey: string;
   operationKey: string;
+  writesPaused?: boolean;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -226,6 +228,7 @@ export function VirtualWallet({
             market={market}
             reversal={reversal}
             hidden={hidden}
+            writesPaused={writesPaused}
             operations={state.operations}
           />
           <History
@@ -255,7 +258,7 @@ export function VirtualWallet({
         <h2>
           {wallets.length ? "Criar outra carteira" : "Sua primeira carteira"}
         </h2>
-        <CreateWallet initialKey={createKey} />
+        <CreateWallet initialKey={createKey} writesPaused={writesPaused} />
       </section>
       {market && (
         <section className="virtual-panel">
@@ -291,7 +294,13 @@ export function VirtualWallet({
     </>
   );
 }
-function CreateWallet({ initialKey }: { initialKey: string }) {
+function CreateWallet({
+  initialKey,
+  writesPaused,
+}: {
+  initialKey: string;
+  writesPaused: boolean;
+}) {
   const [result, action, pending] = useActionState(createWalletAction, {});
   const [stableKey] = useState(initialKey),
     [name, setName] = useState("");
@@ -301,26 +310,28 @@ function CreateWallet({ initialKey }: { initialKey: string }) {
   }, [result.walletId, router]);
   return (
     <form action={action} className="virtual-form">
-      <input type="hidden" name="key" value={result.key ?? stableKey} />
-      <label>
-        Nome da carteira
-        <input
-          name="name"
-          value={name}
-          onChange={(event) => setName(event.target.value)}
-          required
-          maxLength={80}
-          placeholder="Minha carteira USDT"
-        />
-      </label>
-      {result.error && (
-        <p role="alert" className="form-error">
-          {result.error}
-        </p>
-      )}
-      <button className="button primary" disabled={pending}>
-        {pending ? "Criando…" : "Criar carteira USDT"}
-      </button>
+      <fieldset className="virtual-draft" disabled={writesPaused}>
+        <input type="hidden" name="key" value={result.key ?? stableKey} />
+        <label>
+          Nome da carteira
+          <input
+            name="name"
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+            required
+            maxLength={80}
+            placeholder="Minha carteira USDT"
+          />
+        </label>
+        {result.error && (
+          <p role="alert" className="form-error">
+            {result.error}
+          </p>
+        )}
+        <button className="button primary" disabled={pending || writesPaused}>
+          {pending ? "Criando…" : "Criar carteira USDT"}
+        </button>
+      </fieldset>
     </form>
   );
 }
@@ -330,6 +341,7 @@ function OperationForm({
   market,
   reversal,
   hidden,
+  writesPaused,
   operations,
 }: {
   walletId: string;
@@ -337,6 +349,7 @@ function OperationForm({
   market: Market | null;
   reversal: Entry | null;
   hidden: boolean;
+  writesPaused: boolean;
   operations: Entry[];
 }) {
   const [kind, setKind] = useState("DEPOSIT");
@@ -411,107 +424,112 @@ function OperationForm({
         todo o histórico, inclusive operações retroativas.
       </p>
       <form action={action} className="virtual-form">
-        <input name="key" type="hidden" value={result.key ?? stableKey} />
-        <input name="walletId" type="hidden" value={walletId} />
-        <div className="virtual-fields">
-          <label>
-            Tipo de operação
-            <select
-              name="kind"
-              value={selected}
-              onChange={(event) => setKind(event.target.value)}
-            >
-              {Object.entries(names).map(([value, label]) => (
-                <option key={value} value={value}>
-                  {label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Data e hora (seu fuso local)
-            <input
-              type="datetime-local"
-              value={localDate}
-              required
-              onChange={(event) => setLocalDate(event.target.value)}
-            />
-            <input name="occurred_at" type="hidden" value={occurredAt} />
-            <small>
-              A data é convertida para o instante UTC correspondente ao fuso do
-              seu dispositivo. Datas futuras são recusadas.
-            </small>
-          </label>
-        </div>
-        <div className="virtual-fields" key={kind}>
-          {["DEPOSIT", "WITHDRAWAL", "FEE"].includes(kind) &&
-            numberInput("amount", "Valor (USDT)")}
-          {["BUY", "SELL"].includes(kind) && (
-            <>
-              {assetInput("asset_id", "Ativo")}
-              {numberInput("quantity", "Quantidade")}
-              {numberInput("unit_price", "Preço unitário (USDT)")}
-              {numberInput("fees", "Taxa (USDT)")}
-            </>
-          )}
-          {kind === "SWAP" && (
-            <>
-              {legs("sell_", "Venda: ")}
-              {legs("buy_", "Compra: ")}
-            </>
-          )}
-          {kind === "REVERSAL" && (
+        <fieldset className="virtual-draft" disabled={writesPaused}>
+          <input name="key" type="hidden" value={result.key ?? stableKey} />
+          <input name="walletId" type="hidden" value={walletId} />
+          <div className="virtual-fields">
             <label>
-              Operação original
+              Tipo de operação
               <select
-                name="reversal_of"
-                required
-                value={values.reversal_of ?? ""}
-                onChange={(event) => change("reversal_of", event.target.value)}
+                name="kind"
+                value={selected}
+                onChange={(event) => setKind(event.target.value)}
               >
-                <option value="" disabled>
-                  Selecione pelo histórico
-                </option>
-                {[
-                  ...operations,
-                  ...(reversal &&
-                  !operations.some((entry) => entry.id === reversal.id)
-                    ? [reversal]
-                    : []),
-                ]
-                  .filter(
-                    (entry) => !entry.reversed && entry.kind !== "REVERSAL",
-                  )
-                  .map((entry) => (
-                    <option key={entry.id} value={entry.id}>
-                      #{entry.sequence} ·{" "}
-                      {names[entry.kind as keyof typeof names] ?? entry.kind} ·{" "}
-                      {new Date(entry.occurred_at).toLocaleString("pt-BR", {
-                        timeZone: "America/Sao_Paulo",
-                      })}
-                    </option>
-                  ))}
+                {Object.entries(names).map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
               </select>
+            </label>
+            <label>
+              Data e hora (seu fuso local)
+              <input
+                type="datetime-local"
+                value={localDate}
+                required
+                onChange={(event) => setLocalDate(event.target.value)}
+              />
+              <input name="occurred_at" type="hidden" value={occurredAt} />
               <small>
-                O estorno cancela o efeito original e reprocessa o histórico.
-                Não apaga registros.
+                A data é convertida para o instante UTC correspondente ao fuso
+                do seu dispositivo. Datas futuras são recusadas.
               </small>
             </label>
+          </div>
+          <div className="virtual-fields" key={kind}>
+            {["DEPOSIT", "WITHDRAWAL", "FEE"].includes(kind) &&
+              numberInput("amount", "Valor (USDT)")}
+            {["BUY", "SELL"].includes(kind) && (
+              <>
+                {assetInput("asset_id", "Ativo")}
+                {numberInput("quantity", "Quantidade")}
+                {numberInput("unit_price", "Preço unitário (USDT)")}
+                {numberInput("fees", "Taxa (USDT)")}
+              </>
+            )}
+            {kind === "SWAP" && (
+              <>
+                {legs("sell_", "Venda: ")}
+                {legs("buy_", "Compra: ")}
+              </>
+            )}
+            {kind === "REVERSAL" && (
+              <label>
+                Operação original
+                <select
+                  name="reversal_of"
+                  required
+                  value={values.reversal_of ?? ""}
+                  onChange={(event) =>
+                    change("reversal_of", event.target.value)
+                  }
+                >
+                  <option value="" disabled>
+                    Selecione pelo histórico
+                  </option>
+                  {[
+                    ...operations,
+                    ...(reversal &&
+                    !operations.some((entry) => entry.id === reversal.id)
+                      ? [reversal]
+                      : []),
+                  ]
+                    .filter(
+                      (entry) => !entry.reversed && entry.kind !== "REVERSAL",
+                    )
+                    .map((entry) => (
+                      <option key={entry.id} value={entry.id}>
+                        #{entry.sequence} ·{" "}
+                        {names[entry.kind as keyof typeof names] ?? entry.kind}{" "}
+                        ·{" "}
+                        {new Date(entry.occurred_at).toLocaleString("pt-BR", {
+                          timeZone: "America/Sao_Paulo",
+                        })}
+                      </option>
+                    ))}
+                </select>
+                <small>
+                  O estorno cancela o efeito original e reprocessa o histórico.
+                  Não apaga registros.
+                </small>
+              </label>
+            )}
+          </div>
+          {result.error && (
+            <p role="alert" className="form-error">
+              {result.error}
+            </p>
           )}
-        </div>
-        {result.error && (
-          <p role="alert" className="form-error">
-            {result.error}
-          </p>
-        )}
-        {result.success && <p role="status">{result.success}</p>}
-        <button className="button primary" disabled={pending}>
-          {pending ? "Confirmando…" : "Registrar operação"}
-        </button>
-        <small>
-          Em caso de falha, tente novamente sem alterar os dados: a chave da
-          solicitação permanece a mesma.
-        </small>
+          {result.success && <p role="status">{result.success}</p>}
+          <button className="button primary" disabled={pending || writesPaused}>
+            {pending ? "Confirmando…" : "Registrar operação"}
+          </button>
+          <small>
+            Em caso de falha, tente novamente sem alterar os dados: a chave da
+            solicitação permanece a mesma.
+          </small>
+        </fieldset>
       </form>
     </section>
   );

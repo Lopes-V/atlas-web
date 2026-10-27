@@ -59,7 +59,9 @@ function historyWallet(user) {
         51,
       ),
     ],
-    historyFixture: user.mode === "history",
+    historyFixture: ["history", "zero-quote", "wrong-currency"].includes(
+      user.mode,
+    ),
     freshFixture: user.mode === "fresh",
   };
   wallet.older = entry(
@@ -152,12 +154,19 @@ globalThis.fetch = async function (input, init) {
       email: body.email,
       mode: body.email.split("@")[0],
     };
-    if (["history", "fresh"].includes(user.mode)) historyWallet(user);
+    if (
+      ["history", "fresh", "zero-quote", "wrong-currency"].includes(user.mode)
+    )
+      historyWallet(user);
     return Response.json(tokens(user));
   }
   const access = headers.get("Authorization")?.replace(/^Bearer /, ""),
     user = sessions.get(access);
   if (!user) return Response.json({ message: "Invalid JWT" }, { status: 401 });
+  if (url.pathname === "/auth/v1/user" && user.failAuthRead) {
+    user.failAuthRead = false;
+    return Response.json({}, { status: 503 });
+  }
   if (url.pathname === "/auth/v1/user") return Response.json(user);
   if (url.pathname === "/auth/v1/logout") {
     sessions.delete(access);
@@ -168,6 +177,13 @@ globalThis.fetch = async function (input, init) {
       { code: "PGRST202", message: "Missing migration" },
       { status: 404 },
     );
+  if (
+    url.pathname === "/rest/v1/virtual_wallets" &&
+    (user.failNextRead || user.mode === "initial-readfail")
+  ) {
+    user.failNextRead = false;
+    return Response.json({}, { status: 503 });
+  }
   if (url.pathname === "/rest/v1/virtual_wallets")
     return Response.json(
       [...wallets.values()]
@@ -184,15 +200,18 @@ globalThis.fetch = async function (input, init) {
       evaluated_at: now(),
       assets: assets.map((asset, index) => ({
         ...asset,
-        quote: {
-          price: "10",
-          observed_at: new Date(
-            Date.now() - (index === 2 ? -60000 : index ? 300000 : 10000),
-          ).toISOString(),
-          quality: "VALID",
-          provider: "kraken",
-          currency_code: "USDT",
-        },
+        quote:
+          index === 0 && ["zero-quote", "wrong-currency"].includes(user.mode)
+            ? null
+            : {
+                price: "10",
+                observed_at: new Date(
+                  Date.now() - (index === 2 ? -60000 : index ? 300000 : 10000),
+                ).toISOString(),
+                quality: "VALID",
+                provider: "kraken",
+                currency_code: "USDT",
+              },
       })),
     });
   if (rpc === "virtual_wallet_create") {
@@ -210,6 +229,7 @@ globalThis.fetch = async function (input, init) {
     creations.set(creation, wallet.id);
     if (body.p_name.startsWith("Retry") && !attempts.has(creation)) {
       attempts.add(creation);
+      if (user.mode === "retry-read-create") user.failNextRead = true;
       return Response.json({}, { status: 503 });
     }
     return Response.json(wallet.id);
@@ -262,6 +282,8 @@ globalThis.fetch = async function (input, init) {
     wallet.keys.set(body.p_key, { request: serialized, id: operation.id });
     if (request.amount === "777" && !attempts.has(body.p_key)) {
       attempts.add(body.p_key);
+      if (user.mode === "retry-read-operation") user.failNextRead = true;
+      if (user.mode === "retry-auth-operation") user.failAuthRead = true;
       return Response.json(
         { message: "Simulated lost acknowledgement after commit" },
         { status: 503 },

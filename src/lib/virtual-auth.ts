@@ -71,6 +71,11 @@ export async function userRequest(
         "setup",
         "A carteira virtual ainda não foi ativada neste ambiente. O administrador precisa concluir a configuração.",
       );
+    if (response.status >= 500)
+      throw new VirtualError(
+        "unavailable",
+        "Serviço temporariamente indisponível. Tente novamente com a mesma chave.",
+      );
     if (response.status === 429)
       throw new VirtualError(
         "request",

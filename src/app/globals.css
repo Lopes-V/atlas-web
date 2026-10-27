@@ -91,3 +91,4 @@
   .virtual-toolbar > div { gap: 8px; }
 }
 .virtual-hero small { color: #e3faf2; }
+.virtual-draft { border: 0; padding: 0; margin: 0; min-width: 0; display: grid; gap: 20px; }

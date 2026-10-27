@@ -8,8 +8,8 @@ async function login(page: Page, email = "wallet-a@example.test") {
   await page.getByRole("button", { name: "Entrar", exact: true }).click();
   await expect(page).toHaveURL(/\/virtual$/);
 }
-async function create(page: Page) {
-  await login(page);
+async function create(page: Page, email?: string) {
+  await login(page, email);
   await page.getByLabel("Nome da carteira").fill(`Teste ${test.info().testId}`);
   await page.getByRole("button", { name: "Criar carteira USDT" }).click();
   await expect(
@@ -80,11 +80,9 @@ test("wallet starts empty, records exact deposit/trades/swap and supports histor
   }
   await record(page, "SWAP");
   for (const leg of ["Venda", "Compra"]) {
-    await page
-      .getByLabel(`${leg}: ativo`)
-      .selectOption({
-        label: leg === "Venda" ? "BTCUSDT — Bitcoin" : "ETHUSDT — Ethereum",
-      });
+    await page.getByLabel(`${leg}: ativo`).selectOption({
+      label: leg === "Venda" ? "BTCUSDT — Bitcoin" : "ETHUSDT — Ethereum",
+    });
     await page.getByLabel(`${leg}: quantidade`).fill("1");
     await page.getByLabel(`${leg}: preço unitário (USDT)`).fill("10");
     await page.getByLabel(`${leg}: taxa (USDT)`).fill("0");
@@ -280,4 +278,203 @@ test("wallet creation keeps its request key and name after a lost acknowledgemen
   await expect(
     page.getByRole("link", { name: "Second wallet", exact: true }),
   ).toHaveCount(1);
+});
+
+for (const mode of ["zero-quote", "wrong-currency"]) {
+  test(`${mode} latest quote remains unavailable while cash, history and manual records stay usable`, async ({
+    page,
+  }) => {
+    await login(page, `${mode}@example.test`);
+    await expect(
+      page.getByRole("heading", { name: "Patrimônio incompleto", exact: true }),
+    ).toBeVisible();
+    await expect(page.locator(".virtual-stats")).toContainText(
+      "Caixa disponível",
+    );
+    await expect(page.locator("#historico")).toContainText("DEPOSIT");
+    await expect(page.locator("#posicoes")).toContainText(
+      "Cotação indisponível",
+    );
+    await expect(
+      page.locator(".virtual-market > div").filter({ hasText: "BTCUSDT" }),
+    ).toContainText("Cotação indisponível");
+    await page.getByLabel("Tipo de operação").selectOption("BUY");
+    await page
+      .getByLabel("Data e hora (seu fuso local)")
+      .fill("2026-01-01T12:00");
+    await page
+      .getByLabel("Ativo", { exact: true })
+      .selectOption({ label: "BTCUSDT — Bitcoin" });
+    await page.getByLabel("Quantidade", { exact: true }).fill("1");
+    await page.getByLabel("Preço unitário (USDT)", { exact: true }).fill("10");
+    await page.getByLabel("Taxa (USDT)", { exact: true }).fill("0");
+    await page.getByRole("button", { name: "Registrar operação" }).click();
+    await expect(page.locator("#registro").getByRole("status")).toContainText(
+      "confirmado",
+    );
+    await expect(page.locator("#historico")).toContainText("BUY");
+  });
+}
+
+test("ambiguous operation keeps its exact draft and key through a failed 30s read and recovery", async ({
+  page,
+}) => {
+  await page.clock.install();
+  await create(page, "retry-read-operation@example.test");
+  await page.getByLabel("Valor (USDT)").fill("777");
+  const key = await page.locator('#registro input[name="key"]').inputValue();
+  await page.getByRole("button", { name: "Registrar operação" }).click();
+  await expect(page.locator("#registro").getByRole("alert")).toContainText(
+    "mesma chave",
+  );
+  await page.clock.runFor(30001);
+  await expect(
+    page.getByRole("alert").filter({ hasText: "última leitura confirmada" }),
+  ).toBeVisible();
+  await expect(page.getByLabel("Valor (USDT)")).toHaveValue("777");
+  expect(await page.locator('#registro input[name="key"]').inputValue()).toBe(
+    key,
+  );
+  await expect(
+    page.getByRole("button", { name: "Registrar operação" }),
+  ).toBeDisabled();
+  await page.getByRole("button", { name: "Tentar atualizar leitura" }).click();
+  await expect(
+    page.getByRole("alert").filter({ hasText: "última leitura confirmada" }),
+  ).toHaveCount(0);
+  await expect(page.getByLabel("Valor (USDT)")).toHaveValue("777");
+  expect(await page.locator('#registro input[name="key"]').inputValue()).toBe(
+    key,
+  );
+  await page.getByRole("button", { name: "Registrar operação" }).click();
+  await expect(page.locator("#registro").getByRole("status")).toContainText(
+    "confirmado",
+  );
+  await expect(
+    page.locator("#historico").getByText("DEPOSIT", { exact: true }),
+  ).toHaveCount(1);
+  expect(
+    await page.locator('#registro input[name="key"]').inputValue(),
+  ).not.toBe(key);
+});
+
+test("ambiguous creation keeps its exact name and key through a failed 30s read and recovery", async ({
+  page,
+}) => {
+  await page.clock.install();
+  await login(page, "retry-read-create@example.test");
+  const form = page.getByLabel("Nome da carteira").locator("..").locator("..");
+  await page.getByLabel("Nome da carteira").fill("Retry preserved wallet");
+  const key = await form.locator('input[name="key"]').inputValue();
+  await page.getByRole("button", { name: "Criar carteira USDT" }).click();
+  await expect(
+    page.getByRole("alert").filter({ hasText: "mesma chave" }),
+  ).toBeVisible();
+  await page.clock.runFor(30001);
+  await expect(
+    page.getByRole("alert").filter({ hasText: "última leitura confirmada" }),
+  ).toBeVisible();
+  await expect(page.getByLabel("Nome da carteira")).toHaveValue(
+    "Retry preserved wallet",
+  );
+  expect(await form.locator('input[name="key"]').inputValue()).toBe(key);
+  await expect(
+    page.getByRole("button", { name: "Criar carteira USDT" }),
+  ).toBeDisabled();
+  await page.getByRole("button", { name: "Tentar atualizar leitura" }).click();
+  await expect(
+    page.getByRole("alert").filter({ hasText: "última leitura confirmada" }),
+  ).toHaveCount(0);
+  await expect(page.getByLabel("Nome da carteira")).toHaveValue(
+    "Retry preserved wallet",
+  );
+  expect(await form.locator('input[name="key"]').inputValue()).toBe(key);
+  await page.getByRole("button", { name: "Criar carteira USDT" }).click();
+  await expect(page).toHaveURL(/carteira=/);
+  await expect(
+    page.getByRole("link", { name: "Retry preserved wallet", exact: true }),
+  ).toHaveCount(1);
+});
+
+test("an initial transient read never enables writes without a confirmed screen", async ({
+  page,
+}) => {
+  await login(page, "initial-readfail@example.test");
+  await expect(
+    page.getByRole("alert").filter({ hasText: "indisponível" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Tentar atualizar leitura" }),
+  ).toBeVisible();
+  await expect(page.getByLabel("Nome da carteira")).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Registrar operação" }),
+  ).toHaveCount(0);
+});
+
+test("ambiguous write stays hidden with its original key during Auth503 and restores only after same-user verification", async ({
+  page,
+}) => {
+  await page.clock.install();
+  await create(page, "retry-auth-operation@example.test");
+  await page.getByLabel("Valor (USDT)").fill("777");
+  const key = await page.locator('#registro input[name="key"]').inputValue();
+  await page.getByRole("button", { name: "Registrar operação" }).click();
+  await expect(page.locator("#registro").getByRole("alert")).toContainText(
+    "mesma chave",
+  );
+  await page.clock.runFor(30001);
+  await expect(
+    page.getByRole("alert").filter({ hasText: "verificar sua sessão" }),
+  ).toBeVisible();
+  await expect(page.locator("#registro")).toBeHidden();
+  await expect(page.locator(".virtual-stats")).toBeHidden();
+  expect(await page.locator('#registro input[name="key"]').inputValue()).toBe(
+    key,
+  );
+  await expect(page.locator('#registro input[name="amount"]')).toHaveValue(
+    "777",
+  );
+  await page.getByRole("button", { name: "Tentar atualizar leitura" }).click();
+  await expect(page.locator("#registro")).toBeVisible();
+  expect(await page.locator('#registro input[name="key"]').inputValue()).toBe(
+    key,
+  );
+  await expect(page.getByLabel("Valor (USDT)")).toHaveValue("777");
+  await page.getByRole("button", { name: "Registrar operação" }).click();
+  await expect(page.locator("#registro").getByRole("status")).toContainText(
+    "confirmado",
+  );
+  await expect(
+    page.locator("#historico").getByText("DEPOSIT", { exact: true }),
+  ).toHaveCount(1);
+});
+
+test("a newly verified different identity clears a hidden prior-user retry screen", async ({
+  page,
+  context,
+}) => {
+  await page.clock.install();
+  await create(page, "retry-auth-operation@example.test");
+  await page.getByLabel("Valor (USDT)").fill("777");
+  await page.getByRole("button", { name: "Registrar operação" }).click();
+  await expect(page.locator("#registro").getByRole("alert")).toContainText(
+    "mesma chave",
+  );
+  await page.clock.runFor(30001);
+  await expect(
+    page.getByRole("alert").filter({ hasText: "verificar sua sessão" }),
+  ).toBeVisible();
+  await expect(page.locator("#registro")).toBeHidden();
+  await context.clearCookies();
+  const otherPage = await context.newPage();
+  await login(otherPage, "new-identity@example.test");
+  await page.getByRole("button", { name: "Tentar atualizar leitura" }).click();
+  await expect(
+    page.getByRole("alert").filter({ hasText: "pertence" }),
+  ).toBeVisible();
+  await expect(page.locator("#registro")).toHaveCount(0);
+  await expect(page.locator("#historico")).toHaveCount(0);
+  await expect(page.locator('input[name="amount"]')).toHaveCount(0);
+  await otherPage.close();
 });
